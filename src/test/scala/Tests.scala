@@ -3,65 +3,47 @@ import miller._
 
 object Tests {
   def main(args: Array[String]) {
-    Seq[(String, (ParsedData) => Boolean)](
-      "1+2+3+4;"
-        -> (_.program.statements.headOption.collect({ case x: Expr => x.t.isA(TNumber) }).isDefined),
+    Seq[String](
+      "1+2+3+4;",
 
-      "var a = true;"
-        -> (_.program.stack.typeOf("a").collect({ case ConstT(TBoolean) => true}).nonEmpty),
+      "var a = true;",
 
-      "2*2*3/4+10;"
-        -> (_.program.statements.headOption.collect({ case x: Expr => x.t.isA(TNumber) }).isDefined),
+      "2*2*3/4+10;",
 
-      "100;"
-        -> (_.program.statements.headOption.collect({ case x: Expr => x.t.isA(TNumber) }).isDefined),
+      "100;",
 
-      "'hello ' + 'world';"
-        -> (_.program.statements.headOption.collect({ case Add(_, _, ConstT(TString)) => true }).isDefined),
+      "'hello ' + 'world';",
 
-      "function () {};"
-        -> (_.program.statements.head.asInstanceOf[Expr].t.isA(TFunction(Seq(), ConstT(TUndefined)))),
+      "function () {};",
 
-      "function (a,b,c) {};"
-        -> (_.program.statements.head.asInstanceOf[Expr].t.isA(TFunction(Seq(), ConstT(TUndefined)))),
+      "function (a,b,c) {};",
 
-      "function (a,b,c) {return 3;};"
-        -> (p => false),
+      "function (a,b,c) {return 3;};",
 
-      "function fleh (a,b,c) {return 3;};"
-        -> (p => false),
+      "function foo (a,b,c) {return 3;};",
 
-      "var a = 1; var b = 2; var c = 3;"
-        -> (p => false),
+      "var a = 1; var b = 2; var c = 3;",
 
-      "var a; var b; a + b;"
-        -> (p => p.program.stack.typeOf("a").nonEmpty && p.program.stack.typeOf("b").nonEmpty),
+      "var a; var b; a + b;",
 
-      "var a; var b; a + b + 1;"
-        -> (p => false),
+      "var a; var b; a + b + 1;",
 
-      "var alert = function (i) {}; var a = 1; var b = 2; var c = 3; alert(a + b + c); "
-        -> (p => false),
+      "var alert = function (i) {}; var a = 1; var b = 2; var c = 3; alert(a + b + c); ",
 
-      "var alert = function (i) {}; var a = 1; var b = 2; if (a <= b) { alert('ok'); } ;"
-        -> (p => false),
+      "var alert = function (i) {}; var a = 1; var b = 2; if (a <= b) { alert('ok'); } ;",
 
-      "var alert = function (i) {}; var a = 1; var b = 2; if (a <= b) { alert('ok'); } ;"
-        -> (p => false),
+      "var alert = function (i) {}; var a = 1; var b = 2; if (a <= b) { alert('ok'); } ;",
 
-      "var add = function (a, b) {return a + b}; var b = add(1, 2);"
-        -> { p => println(p.program); true },
+      "var add = function (a, b) {return a + b}; var b = add(1, 2);",
 
-      "function (a, b) {return a - b};"
-        -> { p => println(p.program); true }
+      "function (a, b) {return a - b};",
+
+      "var add = function (a, b) { return function(c) { return a + b + c } }"
 
     ) foreach { code =>
       try {
-        val p = Parsing.parse(code._1)
-        if (code._2(new ParsedData(p))) {
-        } else {
-          println("Fail:  " + code._1)
-        }
+        println(Parsing.parse(code))
+        println()
       } catch {
         case a: Exception => a.printStackTrace(); println("Error: " + code)
       }
