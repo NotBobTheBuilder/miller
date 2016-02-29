@@ -22,7 +22,13 @@ case object TNull extends JSType {
 
 case class TFunction(params: Seq[IntersectT], result: InferredType) extends JSType {
   override def serialize(implicit st: ScopeStack) =
-    "Function " + params.map({ case IntersectT(i) => s"{ $i : ${st.groupTypes.get(i)} }" }).mkString("(", ", ", ")") + " -> " + result.serialize
+    "Function " + params.map({ case IntersectT(i) => s"{ $i : ${ st.getGroupType(i) } }" }).mkString("(", ", ", ")") + " -> " + result.serialize
+
+  def specialise(st: ScopeStack): TFunction = {
+    // TODO specialise function type
+    // Should copy type signature replacing ids to new ones
+    this.copy()
+  }
 }
 case class TObject(properties: Map[String, InferredType]) extends JSType
 case class TArray(t: InferredType) extends JSType
@@ -35,63 +41,45 @@ sealed trait InferredType {
     case ConstT(t)      => t.serialize
     case SetT(ts)       => ts.map(_.serialize).mkString("{ ", " v ", "}")
     case VarT(v)        => st.getType(v).toString
-    case IntersectT(t)  => s"{ $t : ${st.groupTypes.get(t).map(_.serialize).getOrElse(t.toString())} }"
+    case IntersectT(t)  => s"{ $t : ${st.getGroupType(t).serialize } }"
   }
 
   def intersect(other: InferredType)(implicit st: ScopeStack): InferredType = {
+    // TODO Consider unification vs pattern matching here
+
+    // Functional Progrmming Field & Harisson - Algorithm W / Type Checking etc
     this match {
-      case AnyT             => other
+      case AnyT           => other
       case t: TypeError   => this
       case ConstT(t)      => other match {
-        case AnyT           => other intersect this
         case ConstT(u)      => if (t == u)         { ConstT(t) } else { NoInterErr(Set(ConstT(t), ConstT(u))) }
         case SetT(ts)       => if (ts contains t)  { ConstT(t) } else { NoInterErr(Set(SetT(ts), ConstT(t))) }
         case VarT(v)        => if (st.getType(v) == this) { this } else { NoInterErr(Set(this, st.getType(v))) }
-        case CallT(v)       => ConstT(t) // TODO: Check type constraint for return type of v
         case IntersectT(i)  => st.setGroupType(i, ConstT(t)); other
-        case t: TypeError => other intersect this
+        case _              => other intersect this
       }
       case SetT(ts)       => other match {
-        case AnyT           => other intersect this
-        case ConstT(t)      => other intersect this
         case SetT(us)       => if ((ts intersect us).nonEmpty) { SetT(ts intersect us) } else { NoInterErr(Set(SetT(ts), SetT(us)))}
         case VarT(v)        => st.define(v, SetT(ts)); SetT(ts)
-        case CallT(v)       => SetT(ts) // TODO: Check type constraint for return type of v
         case IntersectT(i)  => st.setGroupType(i, SetT(ts)); other
-        case t: TypeError => other intersect this
+        case _              => other intersect this
       }
       case VarT(v)        => other match {
-        case AnyT           => other intersect this
-        case ConstT(t)      => other intersect this
-        case SetT(ts)       => other intersect this
         case VarT(w)        => IntersectT(st.link(Set(w, v)))
-        case CallT(w)       => ???
         case IntersectT(i)  => st.setVarType(v, i); IntersectT(i)
-        case t: TypeError => other intersect this
-      }
-      case CallT(v)       => other match {
-        case AnyT           => other intersect this
-        case ConstT(t)      => other intersect this
-        case SetT(ts)       => other intersect this
-        case VarT(w)        => other intersect this
-        case CallT(w)       => ??? // TODO: Figure out this thing because it's probably (definitely) wrong
-        case IntersectT(i)  => IntersectT(i + v)
-        case t: TypeError => other intersect this
+        case _              => other intersect this
       }
       case IntersectT(i)  => other match {
-        case AnyT           => other intersect this
-        case NoInterErr(ks) => other intersect this
-        case ConstT(t)      => other intersect this
-        case SetT(ts)       => other intersect this
-        case VarT(w)        => other intersect this
-        case CallT(c)       => other intersect this
         case IntersectT(v)  => IntersectT(st.mergeGroupTypes(Set(i, v)))
+        case _              => other intersect this
       }
     }
   }
 
-  def isA(t: JSType): Boolean = this match {
+  def isA(t: JSType)(implicit st: ScopeStack): Boolean = this match {
     case ConstT(u) => u == t
+    case VarT(v) => st.getType(v) isA t
+    case IntersectT(i) => st.getGroupType(i) isA t
     case _ => false
   }
 
@@ -101,6 +89,7 @@ sealed trait InferredType {
     case VarT(id) => this canSatisfy st.getType(id)
     case IntersectT(id) => this canSatisfy st.getGroupType(id)
     case SetT(ss) => ss.exists(this canSatisfy ConstT(_))
+    case t: TypeError => false
   }
 }
 
@@ -112,23 +101,21 @@ case class ConstT(t: JSType) extends InferredType {
 case class SetT(ts: Set[JSType]) extends InferredType {
   override def toString = ts.mkString("[", ", ", "]")
 }
-
 case class VarT(v: Int) extends InferredType
-case class CallT(f: Int) extends InferredType
 case class IntersectT(vs: Int) extends InferredType
 
 sealed trait TypeError extends InferredType
 case class NoInterErr(possibles: Set[InferredType]) extends TypeError
-
 case class BadArgsErr(f: TFunction, e: Seq[InferredType]) extends TypeError
 
 class ScopeStack {
   type VarID = Int
   type GroupID = Int
 
-  val vars = collection.mutable.HashMap[Int, String]()
-  val scopes = collection.mutable.Stack(collection.mutable.HashMap[String, Int]())
-  val signature = collection.mutable.Stack[(Seq[VarT], InferredType)]()
+  private val vars = collection.mutable.HashMap[VarID, String]()
+  private val scopes = collection.mutable.Stack(collection.mutable.HashMap[String, VarID]())
+  private val signature = collection.mutable.Stack[(Seq[VarT], InferredType)]()
+
   val varGroups = collection.mutable.HashMap[VarID, GroupID]()
   val mergedGroups = collection.mutable.HashMap[GroupID, GroupID]()
   val groupTypes = collection.mutable.HashMap[GroupID, InferredType]()
@@ -157,9 +144,8 @@ class ScopeStack {
     id
   }
 
-  def define(v: Int, t: InferredType, id: Int = typeUID()): Unit = {
-    implicit val st: ScopeStack = this
-
+  def define(v: Int, t: InferredType): Unit = {
+    val id = typeUID()
     varGroups += (v -> id)
     groupTypes += (id -> t)
   }
@@ -173,6 +159,7 @@ class ScopeStack {
     signature push (ps.map(p => VarT(p._2)) -> AnyT)
 
     ps.foreach(vars += _.swap)
+    ps.foreach(p => define(p._2, AnyT))
 
     ps.map(_._2)
   }
@@ -196,7 +183,9 @@ class ScopeStack {
   }
 
   def paramTypes(implicit st: ScopeStack): Seq[IntersectT] = signature.top._1.map {
-    case VarT(i) => IntersectT(varGroups.get(i).get)
+    case VarT(i) =>
+      val n = varGroups.get(i).get
+      IntersectT(mergedGroups.getOrElse(n, n))
   }
   
   def link(nodes: Set[Int]): Int = {
@@ -258,7 +247,7 @@ class ScopeStack {
     /* TODO: display all variables in all scopes
      */
     // (Int, InferredType) -> (Set(Int), InferredType) -> (Set(String), InferredType)
-    groupTypes.map {
+    groupTypes map {
       case (id, t) => varGroups.filter(_._2 == id).keySet.flatMap(vars.get) -> t
     } map {
       case (names, t) => names.mkString("[ ", ", ", " ]") + " : " + t
