@@ -104,4 +104,5 @@ object AST {
   case class CompMem(e: Expr, prop: Expr, pos: Position) extends Value
   case class New(e: Expr, ps: Seq[Expr], pos: Position) extends Value
   case class CommaList(es: Seq[Expr], pos: Position) extends Value
+  case class JsArray(e: Seq[Expr], pos: Position) extends Value
 }

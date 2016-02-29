@@ -22,14 +22,11 @@ object Miller {
 
     var a = StdIn.readLine("> ")
     while(a.length > 0) {
-      println(a.length)
-      println("\"" + a + "\"")
 
-      println(Parsing.parse(a))
-      println("DONE!")
-      System.exit(20)
+      println(Parsing.jsProgram(new Parsing.lexical.Scanner(a)))
       a = StdIn.readLine("> ")
     }
+
   }
 
 }
