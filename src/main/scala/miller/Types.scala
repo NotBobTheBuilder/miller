@@ -1,5 +1,9 @@
 package miller
 
+import miller.ASTf.{Ident, Expr}
+
+import scala.sys.Prop
+
 sealed trait JSType {
   def serialize(implicit st: ScopeStack) = this.toString
 }
@@ -46,21 +50,23 @@ sealed trait InferredType {
 
   def intersect(other: InferredType)(implicit st: ScopeStack): InferredType = {
     // TODO Consider unification vs pattern matching here
-
     // Functional Progrmming Field & Harisson - Algorithm W / Type Checking etc
     this match {
       case AnyT           => other
       case t: TypeError   => this
       case ConstT(t)      => other match {
-        case ConstT(u)      => if (t == u)         { ConstT(t) } else { NoInterErr(Set(ConstT(t), ConstT(u))) }
-        case SetT(ts)       => if (ts contains t)  { ConstT(t) } else { NoInterErr(Set(SetT(ts), ConstT(t))) }
-        case VarT(v)        => if (st.getType(v) == this) { this } else { NoInterErr(Set(this, st.getType(v))) }
+        case ConstT(u)      => if (t == u)                ConstT(t) else NoInterErr(Set(ConstT(t), ConstT(u)))
+        case SetT(ts)       => if (ts contains t)         ConstT(t) else NoInterErr(Set(SetT(ts), ConstT(t)))
+        case VarT(v)        =>
+          val t2 = st.getType(v) intersect this
+          st.setType(v, t2)
+          t2
         case IntersectT(i)  => st.setGroupType(i, ConstT(t)); other
         case _              => other intersect this
       }
       case SetT(ts)       => other match {
         case SetT(us)       => if ((ts intersect us).nonEmpty) { SetT(ts intersect us) } else { NoInterErr(Set(SetT(ts), SetT(us)))}
-        case VarT(v)        => st.define(v, SetT(ts)); SetT(ts)
+        case VarT(v)        => st.getType(v) intersect this
         case IntersectT(i)  => st.setGroupType(i, SetT(ts)); other
         case _              => other intersect this
       }
@@ -126,7 +132,14 @@ class ScopeStack {
   def varUID(): Int = { _varUID += 1; _varUID }
   def typeUID(): Int = { _typeUID += 1; _typeUID }
 
-  def getId(name: String): Option[Int] = scopes.collectFirst {
+  def getId(name: String): Option[Int] =
+    scopes.collectFirst {
+      /*  TODO: Refactor this
+       * Should take in an expression and:
+       * - if it's not a variable return a typeerror
+       * - if it's a property, find the type of the property (presumably a property check and recursive call)
+       * - if it's a variable, return the type
+       */
     case x if x.contains(name) => x.get(name).get
   }
 
@@ -188,22 +201,27 @@ class ScopeStack {
       IntersectT(mergedGroups.getOrElse(n, n))
   }
   
-  def link(nodes: Set[Int]): Int = {
+  def link(varIds: Set[VarID]): GroupID = {
     implicit val st: ScopeStack = this
 
-    setType(nodes, nodes
+    val varsToGroups = varIds.flatMap(varGroups.get)
+    val groupId = varsToGroups.min // We'll merge all the other groups into the one with the smallest ID
+
+    val others = varsToGroups.filter(_ != groupId)
+
+    val t = varIds
       .flatMap(varGroups.get(_).flatMap(groupTypes.remove).toSeq)
       .foldLeft(AnyT: InferredType)(_ intersect _)
-    )
-    nodes.head
+
+    others.foreach(mergedGroups += _ -> groupId)
+    groupTypes += (groupId -> t)
+    groupId
   }
 
-  def setType(nodes: Set[Int], t: InferredType): Int = {
+  def setType(node: Int, t: InferredType): Int = {
     val id = typeUID()
-    nodes.foreach(varGroups += _ -> id)
+    varGroups += node -> id
     groupTypes += (id -> t)
-
-    varGroups.values.toSet.diff(groupTypes.keySet).foreach(groupTypes.remove)
     id
   }
 

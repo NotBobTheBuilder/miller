@@ -20,13 +20,11 @@ object Miller {
 //    val p = Parsing.parse("var sub = function(a, b) { return a - b; };")
 //    println(Parsing.parse("5 + 2 - 3 < 2 && 5 / 2 == 12 + 33  && 7 / 4 <= 5 "))
 
-    var a = StdIn.readLine("> ")
-    while(a.length > 0) {
-
-      println(Parsing.jsProgram(new Parsing.lexical.Scanner(a)))
-      a = StdIn.readLine("> ")
-    }
-
+    val p = Parsing.parse(StdIn.readLine("> "))
+//    val p = Parsing.parse("function(a, b) { return a - b; }")
+    println(p.stack.varGroups)
+    println(p.stack.mergedGroups)
+    println(p.stack.groupTypes)
+    println(p)
   }
-
 }

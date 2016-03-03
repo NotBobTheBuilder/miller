@@ -24,7 +24,7 @@ object Inference {
     // 1 + ""; var a = ""; var b = 1; a + b; var add = function(x) { return x + 1 }; var mul = function (y, z) { return y * z };
     ss.collect {
       case Declare(_, e, pos)             => checkOne(e.t, pos)
-      case Assign(v, e, pos)              => checkOne(e.t intersect st.getType(v.get), pos)
+//    case Assign(v, e, pos)              => checkOne(e.t intersect st.getType(v.get), pos)
       case While(c, bs, pos)              => checkOne(c.t, c.pos) ++ check(bs, st)
       case If(c, bs, pos)                 => checkOne(c.t, c.pos) ++ check(bs, st)
       case IfElse(c, ts, fs, pos)         => checkOne(c.t, c.pos) ++ check(ts, st) ++ check(fs, st)

@@ -1,8 +1,33 @@
 package miller
 
 case class Position(startLine: Int, startCol: Int, endLine: Int, endCol: Int) {
-  override def toString = s"l${startLine}c$startCol - l${endLine}c$endCol"
+  override def toString = ""  //s"l${startLine}c$startCol - l${endLine}c$endCol"
   def position = (" " * (startCol - 1)) + ("^" * (endCol - startCol))
+
+  def union(that: Position) = {
+    val max = Position.max(this, that)
+    val min = Position.min(this, that)
+    Position(
+      min.startLine,
+      min.startCol,
+      max.endLine,
+      max.endCol
+    )
+  }
+}
+
+object Position {
+  def min(a: Position, b: Position): Position = {
+    if (a.startLine < b.startLine) a
+    else if (a.startLine == b.startLine && a.startCol < b.startCol) a
+    else b
+  }
+
+  def max(a: Position, b: Position): Position = {
+    if (a.startLine > b.startLine) a
+    else if (a.startLine == b.startLine && a.startCol > b.startCol) a
+    else b
+  }
 }
 
 trait Pos {
@@ -36,7 +61,7 @@ object AST {
   case class USub(exp: Expr, pos: Position) extends Op
 
   case class PreInc(exp: Expr, pos: Position) extends Op
-  case class PreSub(exp: Expr, pos: Position) extends Op
+  case class PreDec(exp: Expr, pos: Position) extends Op
 
   case class TypeOf(exp: Expr, pos: Position) extends Op
   case class Void(exp: Expr, pos: Position) extends Op
@@ -105,4 +130,5 @@ object AST {
   case class New(e: Expr, ps: Seq[Expr], pos: Position) extends Value
   case class CommaList(es: Seq[Expr], pos: Position) extends Value
   case class JsArray(e: Seq[Expr], pos: Position) extends Value
+  case class JsObject(e: Seq[(Expr, Expr)], pos: Position) extends Value
 }
