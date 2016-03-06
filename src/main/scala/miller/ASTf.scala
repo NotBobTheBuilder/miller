@@ -2,99 +2,101 @@ package miller
 
 import scala.language.implicitConversions
 
+case class Loan[T, U](l: T) {
+  def to(f: (T)=>U) = f(l)
+}
+
 object ASTf {
 
   sealed trait ASTNode extends Pos
 
-  sealed trait Block
-
-  case class Program(statements: Seq[Statement], stack: ScopeStack, pos: Position) extends Block with Pos
+  case class Program(statements: Seq[Statement], stack: ScopeStack, pos: Position) extends Pos
 
   object Program {
 
     implicit def expr2f(exp: AST.Expr)(implicit st: ScopeStack): ASTf.Expr = {
       import Expr._
       exp match {
-        case             AST.PostInc(e, p) => postInc(e, p)
-        case             AST.PostDec(e, p) => postDec(e, p)
+        case               AST.PostInc(e, p) => postInc(e, p)
+        case               AST.PostDec(e, p) => postDec(e, p)
 
-        case                 AST.Not(e, p) => not(e, p)
-        case              AST.BitNot(e, p) => bitnot(e, p)
-        case                AST.UAdd(e, p) => uadd(e, p)
-        case                AST.USub(e, p) => usub(e, p)
+        case                   AST.Not(e, p) => not(e, p)
+        case                AST.BitNot(e, p) => bitnot(e, p)
+        case                  AST.UAdd(e, p) => uadd(e, p)
+        case                  AST.USub(e, p) => usub(e, p)
 
-        case              AST.PreInc(e, p) => preInc(e, p)
-        case              AST.PreDec(e, p) => preDec(e, p)
+        case                AST.PreInc(e, p) => preInc(e, p)
+        case                AST.PreDec(e, p) => preDec(e, p)
 
-        case              AST.TypeOf(e, p) => typeOf(e, p)
-        case                AST.Void(e, p) => void(e, p)
-        case              AST.Delete(e, p) => delete(e, p)
+        case                AST.TypeOf(e, p) => typeOf(e, p)
+        case                  AST.Void(e, p) => void(e, p)
+        case                AST.Delete(e, p) => delete(e, p)
 
-        case        AST.Mul(lhs, rhs, pos) => mul(lhs, rhs, pos)
-        case        AST.Div(lhs, rhs, pos) => div(lhs, rhs, pos)
-        case        AST.Mod(lhs, rhs, pos) => mod(lhs, rhs, pos)
+        case          AST.Mul(lhs, rhs, pos) => mul(lhs, rhs, pos)
+        case          AST.Div(lhs, rhs, pos) => div(lhs, rhs, pos)
+        case          AST.Mod(lhs, rhs, pos) => mod(lhs, rhs, pos)
 
-        case        AST.Add(lhs, rhs, pos) => add(lhs, rhs, pos)
-        case        AST.Sub(lhs, rhs, pos) => sub(lhs, rhs, pos)
+        case          AST.Add(lhs, rhs, pos) => add(lhs, rhs, pos)
+        case          AST.Sub(lhs, rhs, pos) => sub(lhs, rhs, pos)
 
-        case     AST.LShift(lhs, rhs, pos) => lshift(lhs, rhs, pos)
-        case     AST.RShift(lhs, rhs, pos) => rshift(lhs, rhs, pos)
-        case    AST.URShift(lhs, rhs, pos) => urshift(lhs, rhs, pos)
+        case       AST.LShift(lhs, rhs, pos) => lshift(lhs, rhs, pos)
+        case       AST.RShift(lhs, rhs, pos) => rshift(lhs, rhs, pos)
+        case      AST.URShift(lhs, rhs, pos) => urshift(lhs, rhs, pos)
 
-        case         AST.Lt(lhs, rhs, pos) => lt(lhs, rhs, pos)
-        case       AST.LtEq(lhs, rhs, pos) => lteq(lhs, rhs, pos)
-        case         AST.Gt(lhs, rhs, pos) => gt(lhs, rhs, pos)
-        case       AST.GtEq(lhs, rhs, pos) => gteq(lhs, rhs, pos)
+        case           AST.Lt(lhs, rhs, pos) => lt(lhs, rhs, pos)
+        case         AST.LtEq(lhs, rhs, pos) => lteq(lhs, rhs, pos)
+        case           AST.Gt(lhs, rhs, pos) => gt(lhs, rhs, pos)
+        case         AST.GtEq(lhs, rhs, pos) => gteq(lhs, rhs, pos)
 
-        case         AST.In(lhs, rhs, pos) => in(lhs, rhs, pos)
-        case AST.InstanceOf(lhs, rhs, pos) => instanceof(lhs, rhs, pos)
+        case           AST.In(lhs, rhs, pos) => in(lhs, rhs, pos)
+        case   AST.InstanceOf(lhs, rhs, pos) => instanceof(lhs, rhs, pos)
 
-        case         AST.Eq(lhs, rhs, pos) => jsEq(lhs, rhs, pos)
-        case        AST.NEq(lhs, rhs, pos) => neq(lhs, rhs, pos)
-        case        AST.EEq(lhs, rhs, pos) => eeq(lhs, rhs, pos)
-        case       AST.NEEq(lhs, rhs, pos) => neeq(lhs, rhs, pos)
+        case           AST.Eq(lhs, rhs, pos) => jsEq(lhs, rhs, pos)
+        case          AST.NEq(lhs, rhs, pos) => neq(lhs, rhs, pos)
+        case          AST.EEq(lhs, rhs, pos) => eeq(lhs, rhs, pos)
+        case         AST.NEEq(lhs, rhs, pos) => neeq(lhs, rhs, pos)
 
-        case     AST.BinAnd(lhs, rhs, pos) => binand(lhs, rhs, pos)
-        case     AST.BinXor(lhs, rhs, pos) => binxor(lhs, rhs, pos)
-        case      AST.BinOr(lhs, rhs, pos) => binor(lhs, rhs, pos)
+        case       AST.BinAnd(lhs, rhs, pos) => binand(lhs, rhs, pos)
+        case       AST.BinXor(lhs, rhs, pos) => binxor(lhs, rhs, pos)
+        case        AST.BinOr(lhs, rhs, pos) => binor(lhs, rhs, pos)
 
-        case        AST.And(lhs, rhs, pos) => and(lhs, rhs, pos)
-        case         AST.Or(lhs, rhs, pos) => or(lhs, rhs, pos)
+        case          AST.And(lhs, rhs, pos) => and(lhs, rhs, pos)
+        case           AST.Or(lhs, rhs, pos) => or(lhs, rhs, pos)
 
-        case     AST.Assign(lhs, rhs, pos) => assign(lhs, rhs, pos)
-        case      AST.AddEq(lhs, rhs, pos) => addeq(lhs, rhs, pos)
-        case      AST.SubEq(lhs, rhs, pos) => subeq(lhs, rhs, pos)
-        case      AST.DivEq(lhs, rhs, pos) => diveq(lhs, rhs, pos)
-        case      AST.MulEq(lhs, rhs, pos) => muleq(lhs, rhs, pos)
-        case      AST.ModEq(lhs, rhs, pos) => modeq(lhs, rhs, pos)
-        case   AST.LShiftEq(lhs, rhs, pos) => lshifteq(lhs, rhs, pos)
-        case   AST.RShiftEq(lhs, rhs, pos) => rshifteq(lhs, rhs, pos)
-        case  AST.URShiftEq(lhs, rhs, pos) => urshifteq(lhs, rhs, pos)
-        case   AST.BinAndEq(lhs, rhs, pos) => binandeq(lhs, rhs, pos)
-        case   AST.BinXorEq(lhs, rhs, pos) => binxoreq(lhs, rhs, pos)
-        case    AST.BinOrEq(lhs, rhs, pos) => binoreq(lhs, rhs, pos)
+        case       AST.Assign(lhs, rhs, pos) => assign(lhs, rhs, pos)
+        case        AST.AddEq(lhs, rhs, pos) => addeq(lhs, rhs, pos)
+        case        AST.SubEq(lhs, rhs, pos) => subeq(lhs, rhs, pos)
+        case        AST.DivEq(lhs, rhs, pos) => diveq(lhs, rhs, pos)
+        case        AST.MulEq(lhs, rhs, pos) => muleq(lhs, rhs, pos)
+        case        AST.ModEq(lhs, rhs, pos) => modeq(lhs, rhs, pos)
+        case     AST.LShiftEq(lhs, rhs, pos) => lshifteq(lhs, rhs, pos)
+        case     AST.RShiftEq(lhs, rhs, pos) => rshifteq(lhs, rhs, pos)
+        case    AST.URShiftEq(lhs, rhs, pos) => urshifteq(lhs, rhs, pos)
+        case     AST.BinAndEq(lhs, rhs, pos) => binandeq(lhs, rhs, pos)
+        case     AST.BinXorEq(lhs, rhs, pos) => binxoreq(lhs, rhs, pos)
+        case      AST.BinOrEq(lhs, rhs, pos) => binoreq(lhs, rhs, pos)
 
-        case AST.Ternary(cond, tB, fB, pos) =>
-          //TODO: Unify
-          ASTf.Ternary(cond, tB, fB, tB.t intersect fB.t, pos)
+        case               AST.Ident(n, pos) => Ident(st.getId(n), st.getId(n).map(p => VarT(p)).getOrElse(ConstT(TUndefined): InferredType), pos)
+        case  AST.LiteralRegExp(cs, fs, pos) => LiteralRegExp(cs, fs, pos)
+        case       AST.LiteralNum(d, f, pos) => LiteralNum(d, f, pos)
+        case          AST.LiteralStr(s, pos) => LiteralStr(s, pos)
+        case                   AST.True(pos) => True(pos)
+        case                  AST.False(pos) => False(pos)
+        case                   AST.Null(pos) => Null(pos)
+        case              AST.Undefined(pos) => Undefined(pos)
+        case                   AST.This(pos) => This(pos)
 
-        case AST.Ident(n, pos) => ASTf.Ident(st.getId(n), st.getId(n).map(p => VarT(p)).getOrElse(ConstT(TUndefined): InferredType), pos)
-        case AST.LiteralNum(d, f, pos) => ASTf.LiteralNum(d, f, pos)
-        case AST.LiteralStr(s, pos) => ASTf.LiteralStr(s, pos)
-        case AST.True(pos) => ASTf.True(pos)
-        case AST.False(pos) => ASTf.False(pos)
-        case AST.Null(pos) => ASTf.Null(pos)
-        case AST.Undefined(pos) => ASTf.Undefined(pos)
-        case AST.This(pos) => ASTf.This(pos)
+        case         AST.Member(e, mem, pos) => Loan(expr2f(e)) to (e => Member(e, mem, e.t, pos))
+        case       AST.CompMem(e, prop, pos) => Loan(expr2f(e)) to (e => CompMem(e, prop, e.t, pos))
+        case             AST.JsArray(e, pos) => Loan(exprSeq2f(e)) to (e => JsArray(e, ConstT(TArray(ConstT(TUndefined))), pos))
+        case            AST.JsObject(e, pos) => JsObject(Seq(), ConstT(TObject(Map())), pos)
+        case             AST.New(e, ps, pos) => Loan(expr2f(e)) to (e => New(e, ps, e.t, pos))
 
-        case AST.CommaList(es, pos) => ???
-        case AST.Member(e, mem, pos) => ???
-        case AST.CompMem(e, prop, pos) => ???
-        case AST.JsArray(e, pos) => ???
-        case AST.JsObject(e, pos) => ???
-        case AST.New(e, ps, pos) => New(e, ps, e.t, pos)
+        case  AST.Ternary(cond, tB, fB, pos) => Ternary(cond, tB, fB, tB.t intersect fB.t, pos)
 
-        case AST.JSFunction(n, ps, b, pos) =>
+        case          AST.CommaList(es, pos) => Loan(exprSeq2f(es)) to (es => CommaList(es, es.last.t, pos))
+
+        case AST.JsFunction(n, ps, b, pos) =>
           val paramIds = st.pushScope(ps)
           val block: Seq[Statement] = b
           val tps = st.paramTypes
@@ -103,7 +105,9 @@ object ASTf {
 
           ASTf.JSFunction(n, paramIds, block, ConstT(TFunction(tps, rt)), pos)
 
-        case AST.JSCall(f, ps, pos) => ASTf.JSCall(f, ps, applyCall(f.t, ps, st), pos)
+        case AST.JsCall(ff, ps, pos) =>
+          val f = expr2f(ff)
+          JSCall(f, ps, applyCall(f.t, ps, st), pos) // TODO: this
       }
     }
 
@@ -145,10 +149,14 @@ object ASTf {
         // function (a, b) { return a - b }
         val e = expr2f(v)
         st.ret(e.t); ASTf.Return(e, pos)
-      case AST.Declare(n, Some(e), pos)   =>
-        val v = expr2f(e)
-        ASTf.Declare(st.declare(n, v.t), v, pos)
-      case AST.Declare(n, None, pos)      => ASTf.Declare(st.declare(n), Undefined(pos), pos) //TODO
+      case AST.Declare(vars, pos)   =>
+        val fpairs = vars.map { pair =>
+          val (n, v) = pair
+          val v2 = v.map(expr2f)
+          val t = v2.map(_.t).getOrElse(ConstT(TUndefined))
+          (st.declare(n, t), v2, t)
+        }
+        ASTf.Declare(fpairs, pos)
       case AST.If(cond, block, pos)       => ASTf.If(cond, block, pos)
       case AST.IfElse(cond, tb, fb, pos)  => ASTf.IfElse(cond, tb, fb, pos)
       case AST.While(cond, b, pos)        => ASTf.While(cond, b, pos)
@@ -166,26 +174,26 @@ object ASTf {
   }
 
   case class Return(value: Expr, pos: Position) extends Statement
-  case class Declare(ident: Int, value: Expr, pos: Position) extends Statement
+  case class Declare(vars: Seq[(Int, Option[Expr], InferredType)], pos: Position) extends Statement
 
   case class While(
     cond: Expr,
     block: Seq[Statement],
     pos: Position
-  ) extends Statement with Block
+  ) extends Statement
 
   case class If(
     cond: Expr,
     block: Seq[Statement],
     pos: Position
-  ) extends Statement with Block
+  ) extends Statement
 
   case class IfElse(
     cond: Expr,
     trueBlock: Seq[Statement],
     falseBlock: Seq[Statement],
     pos: Position
-  ) extends Statement with Block
+  ) extends Statement
 
   sealed trait Expr extends Statement {
     val t: InferredType
@@ -359,6 +367,7 @@ object ASTf {
   sealed trait Value extends Expr
 
   case class Ident(varID: Option[Int], t: InferredType, pos: Position) extends Value
+  case class LiteralRegExp(chars: String, flags: String, pos: Position, t: InferredType = ConstT(TRegExp)) extends Value
   case class LiteralNum(decPart: Int, fracPart: Int, pos: Position, t: InferredType = ConstT(TNumber)) extends Value
   case class LiteralStr(string: String, pos: Position, t: InferredType = ConstT(TString)) extends Value
   case class True(pos: Position, t: InferredType = ConstT(TBoolean)) extends Value
@@ -366,11 +375,12 @@ object ASTf {
   case class Null(pos: Position, t: InferredType = ConstT(TNull)) extends Value
   case class Undefined(pos: Position, t: InferredType = ConstT(TUndefined)) extends Value
   case class This(pos: Position, t: InferredType = ConstT(TUndefined)) extends Value
-  case class JSFunction(name: Option[String], params: Seq[Int], block: Seq[Statement], t: InferredType, pos: Position) extends Value with Block
+  case class JSFunction(name: Option[String], params: Seq[Int], block: Seq[Statement], t: InferredType, pos: Position) extends Value
   case class JSCall(f: Expr, ps: Seq[Expr], t: InferredType, pos: Position) extends Value
   case class Member(e: Expr, member: String, t: InferredType, pos: Position) extends Value
   case class CompMem(e: Expr, prop: Expr, t: InferredType, pos: Position) extends Value
   case class New(e: Expr, ps: Seq[Expr], t: InferredType, pos: Position) extends Value
   case class CommaList(es: Seq[Expr], t: InferredType, pos: Position) extends Value
+  case class JsObject(e: Seq[(String, Expr)], t: InferredType, pos: Position) extends Value
   case class JsArray(e: Seq[Expr], t: InferredType, pos: Position) extends Value
 }

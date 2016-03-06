@@ -20,7 +20,8 @@ object Miller {
 //    val p = Parsing.parse("var sub = function(a, b) { return a - b; };")
 //    println(Parsing.parse("5 + 2 - 3 < 2 && 5 / 2 == 12 + 33  && 7 / 4 <= 5 "))
 
-    val p = Parsing.parse(StdIn.readLine("> "))
+    val i = io.Source.stdin.getLines().mkString("\n")
+    val p = Parsing.parse(i)
 //    val p = Parsing.parse("function(a, b) { return a - b; }")
     println(p.stack.varGroups)
     println(p.stack.mergedGroups)

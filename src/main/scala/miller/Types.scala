@@ -11,6 +11,9 @@ sealed trait JSType {
 case object TNumber extends JSType {
   override def toString = "Number"
 }
+case object TRegExp extends JSType {
+  override def toString = "Number"
+}
 case object TString extends JSType {
   override def toString = "String"
 }
@@ -209,7 +212,7 @@ class ScopeStack {
 
     val others = varsToGroups.filter(_ != groupId)
 
-    val t = varIds
+    val t  = varIds
       .flatMap(varGroups.get(_).flatMap(groupTypes.remove).toSeq)
       .foldLeft(AnyT: InferredType)(_ intersect _)
 

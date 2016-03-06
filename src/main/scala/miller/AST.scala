@@ -1,7 +1,7 @@
 package miller
 
 case class Position(startLine: Int, startCol: Int, endLine: Int, endCol: Int) {
-  override def toString = ""  //s"l${startLine}c$startCol - l${endLine}c$endCol"
+  override def toString = s"l${startLine}c$startCol" //- l${endLine}c$endCol"
   def position = (" " * (startCol - 1)) + ("^" * (endCol - startCol))
 
   def union(that: Position) = {
@@ -43,7 +43,7 @@ object AST {
   sealed trait Statement extends ASTNode {}
 
   case class Return(value: Expr, pos: Position) extends Statement
-  case class Declare(name: String, value: Option[Expr], pos: Position) extends Statement
+  case class Declare(vars: Seq[(String, Option[Expr])], pos: Position) extends Statement
   case class While(cond: Expr, block: Seq[Statement], pos: Position) extends Statement
   case class If(cond: Expr, block: Seq[Statement], pos: Position) extends Statement
   case class IfElse(cond: Expr, tBlock: Seq[Statement], fBlock: Seq[Statement], pos: Position) extends Statement
@@ -116,6 +116,7 @@ object AST {
   sealed trait Value extends Expr
 
   case class Ident(name: String, pos: Position) extends Value
+  case class LiteralRegExp(chars: String, flags: String, pos: Position) extends Value
   case class LiteralNum(decPart: Int, fracPart: Int, pos: Position) extends Value
   case class LiteralStr(string: String, pos: Position) extends Value
   case class True(pos: Position) extends Value
@@ -123,12 +124,12 @@ object AST {
   case class Null(pos: Position) extends Value
   case class Undefined(pos: Position) extends Value
   case class This(pos: Position) extends Value
-  case class JSFunction(name: Option[String], params: Seq[String], block: Seq[Statement], pos: Position) extends Value
-  case class JSCall(f: Expr, ps: Seq[Expr], pos: Position) extends Value
+  case class JsFunction(name: Option[String], params: Seq[String], block: Seq[Statement], pos: Position) extends Value
+  case class JsCall(f: Expr, ps: Seq[Expr], pos: Position) extends Value
   case class Member(e: Expr, member: String, pos: Position) extends Value
   case class CompMem(e: Expr, prop: Expr, pos: Position) extends Value
   case class New(e: Expr, ps: Seq[Expr], pos: Position) extends Value
   case class CommaList(es: Seq[Expr], pos: Position) extends Value
   case class JsArray(e: Seq[Expr], pos: Position) extends Value
-  case class JsObject(e: Seq[(Expr, Expr)], pos: Position) extends Value
+  case class JsObject(e: Seq[(String, Expr)], pos: Position) extends Value
 }
