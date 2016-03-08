@@ -152,9 +152,9 @@ object Parsing extends PackratParsers with ParsingUtils {
   lazy val jsArray =                        "[" ~> (repsep(jsExprTop, ",") <~ "]")      :>  JsArray.tupled
 
   lazy val jsReturn =                       "return" ~> jsExpr                          :>  Return.tupled
-  lazy val jsDeclareWithVal =               jsIdentifier ~ "=" ~ jsExpr                 ^^  { case (id ~ "=" ~ e) => (id.name, Some(e)) }
-  lazy val jsDeclareNoVal =                 jsIdentifier                                ^^  { case (id)           => (id.name, None) }
-  lazy val jsDeclare =                      "var" ~> repsep(jsDeclareWithVal | jsDeclareNoVal, ",") :> Declare.tupled
+  lazy val jsDeclareWithVal =               ident ~ "=" ~ jsExprTop                 ^^  { case (id ~ "=" ~ e) => (id, Some(e)) }
+  lazy val jsDeclareNoVal =                 ident                                ^^  { case (id)           => (id, None) }
+  lazy val jsDeclare =                      "var" ~> repsep(wsOpt(jsDeclareWithVal | jsDeclareNoVal), ",") :> Declare.tupled
 
   lazy val jsCond =                         "(" ~> (jsCommas <~ ")")
 
@@ -204,6 +204,7 @@ object Parsing extends PackratParsers with ParsingUtils {
 
   private def reader(s: String): PackratReader[Char] = new PackratReader(new CharArrayReader(s.toCharArray))
 
+  def parseAST(in: String): AST.Program = jsProgram(reader(in)).get
   def parse(in: String): ASTf.Program = ASTf.Program.program2f(jsProgram(reader(in)).get)
 }
 

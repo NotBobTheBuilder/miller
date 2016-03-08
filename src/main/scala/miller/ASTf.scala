@@ -76,7 +76,7 @@ object ASTf {
         case     AST.BinXorEq(lhs, rhs, pos) => binxoreq(lhs, rhs, pos)
         case      AST.BinOrEq(lhs, rhs, pos) => binoreq(lhs, rhs, pos)
 
-        case               AST.Ident(n, pos) => Ident(st.getId(n), st.getId(n).map(p => VarT(p)).getOrElse(ConstT(TUndefined): InferredType), pos)
+        case               AST.Ident(n, pos) => ident(st, n, pos)
         case  AST.LiteralRegExp(cs, fs, pos) => LiteralRegExp(cs, fs, pos)
         case       AST.LiteralNum(d, f, pos) => LiteralNum(d, f, pos)
         case          AST.LiteralStr(s, pos) => LiteralStr(s, pos)
@@ -114,9 +114,8 @@ object ASTf {
     def applyCall(t: InferredType, ps: Seq[Expr], st: ScopeStack): InferredType = {
       implicit val sta = st
       t match {
-        case VarT(n) => applyCall(st.getType(n), ps, st)
         case ConstT(t: TFunction) => applyFunction(t, ps)
-        case _ => NoInterErr(Set(t, ConstT(TFunction(Seq(), AnyT)))) // TODO: Handle this
+        case IntersectT(i) => applyCall(st.getGroupType(GroupID(i)), ps, st)
       }
     }
 
@@ -125,7 +124,7 @@ object ASTf {
         BadArgsErr(f, ps.map(_.t))
       } else {
         f.specialise(st)
-        f.params.map(p => st.getGroupType(p.vs)).zip(ps).foldLeft(f.result) { (r, ps) =>
+        f.params.map(p => st.getGroupType(GroupID(p.vs))).zip(ps).foldLeft(f.result) { (r, ps) =>
           val (expectedType, calledType) = ps
           if (calledType.t canSatisfy expectedType) {
             f.result
@@ -149,12 +148,13 @@ object ASTf {
         // function (a, b) { return a - b }
         val e = expr2f(v)
         st.ret(e.t); ASTf.Return(e, pos)
-      case AST.Declare(vars, pos)   =>
-        val fpairs = vars.map { pair =>
-          val (n, v) = pair
-          val v2 = v.map(expr2f)
-          val t = v2.map(_.t).getOrElse(ConstT(TUndefined))
-          (st.declare(n, t), v2, t)
+      case AST.Declare(assignments, pos)   =>
+        val fpairs = assignments.map { assignment =>
+          val (ident, rhs) = assignment
+          val frhs = rhs.map(expr2f)
+          val t = frhs.map(_.t).getOrElse(AnyT)
+
+          (st.declare(ident, t)._1, frhs, t)
         }
         ASTf.Declare(fpairs, pos)
       case AST.If(cond, block, pos)       => ASTf.If(cond, block, pos)
@@ -169,12 +169,17 @@ object ASTf {
     }
   }
 
+  def ident(st: ScopeStack, n: String, pos: Position): Ident = {
+    val vid = st.getId(n)
+    Ident(vid, IntersectT(st.getGroup(vid.get).id), pos)
+  }
+
   sealed trait Statement extends ASTNode {
     val pos: Position
   }
 
   case class Return(value: Expr, pos: Position) extends Statement
-  case class Declare(vars: Seq[(Int, Option[Expr], InferredType)], pos: Position) extends Statement
+  case class Declare(vars: Seq[(VarID, Option[Expr], InferredType)], pos: Position) extends Statement
 
   case class While(
     cond: Expr,
@@ -366,7 +371,7 @@ object ASTf {
 
   sealed trait Value extends Expr
 
-  case class Ident(varID: Option[Int], t: InferredType, pos: Position) extends Value
+  case class Ident(varID: Option[VarID], t: InferredType, pos: Position) extends Value
   case class LiteralRegExp(chars: String, flags: String, pos: Position, t: InferredType = ConstT(TRegExp)) extends Value
   case class LiteralNum(decPart: Int, fracPart: Int, pos: Position, t: InferredType = ConstT(TNumber)) extends Value
   case class LiteralStr(string: String, pos: Position, t: InferredType = ConstT(TString)) extends Value
@@ -375,7 +380,7 @@ object ASTf {
   case class Null(pos: Position, t: InferredType = ConstT(TNull)) extends Value
   case class Undefined(pos: Position, t: InferredType = ConstT(TUndefined)) extends Value
   case class This(pos: Position, t: InferredType = ConstT(TUndefined)) extends Value
-  case class JSFunction(name: Option[String], params: Seq[Int], block: Seq[Statement], t: InferredType, pos: Position) extends Value
+  case class JSFunction(name: Option[String], params: Seq[VarID], block: Seq[Statement], t: InferredType, pos: Position) extends Value
   case class JSCall(f: Expr, ps: Seq[Expr], t: InferredType, pos: Position) extends Value
   case class Member(e: Expr, member: String, t: InferredType, pos: Position) extends Value
   case class CompMem(e: Expr, prop: Expr, t: InferredType, pos: Position) extends Value

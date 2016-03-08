@@ -23,9 +23,6 @@ object Miller {
     val i = io.Source.stdin.getLines().mkString("\n")
     val p = Parsing.parse(i)
 //    val p = Parsing.parse("function(a, b) { return a - b; }")
-    println(p.stack.varGroups)
-    println(p.stack.mergedGroups)
-    println(p.stack.groupTypes)
     println(p)
   }
 }
