@@ -22,16 +22,15 @@ object Inference {
   def check(ss: Seq[Statement], st: ScopeStack): Seq[(Position, String)] = {
     implicit val stack = st
     // 1 + ""; var a = ""; var b = 1; a + b; var add = function(x) { return x + 1 }; var mul = function (y, z) { return y * z };
-    ss.collect {
+    ss.flatMap {
       case Declare(es, pos)               => es.flatMap(e => checkOne(e._3, pos))
-//    case Assign(v, e, pos)              => checkOne(e.t intersect st.getType(v.get), pos)
       case While(c, bs, pos)              => checkOne(c.t, c.pos) ++ check(bs, st)
       case If(c, bs, pos)                 => checkOne(c.t, c.pos) ++ check(bs, st)
       case IfElse(c, ts, fs, pos)         => checkOne(c.t, c.pos) ++ check(ts, st) ++ check(fs, st)
       case Return(e, pos)                 => checkOne(e.t, pos)
       case JSFunction(_, _, bs, t, pos)   => check(bs, st) ++ checkOne(t, pos)
       case e: Expr                        => checkOne(e.t, e.pos)
-    }.flatten
+    }
   }
 
   def checkOne(a: InferredType, pos: Position): Seq[(Position, String)] = {

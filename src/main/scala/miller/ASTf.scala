@@ -124,12 +124,12 @@ object ASTf {
         BadArgsErr(f, ps.map(_.t))
       } else {
         f.specialise(st)
-        f.params.map(p => st.getGroupType(GroupID(p.vs))).zip(ps).foldLeft(f.result) { (r, ps) =>
-          val (expectedType, calledType) = ps
-          if (calledType.t canSatisfy expectedType) {
-            f.result
-          } else {
-            NoInterErr(Set(expectedType, calledType.t))
+        f.params.zip(ps).foldLeft(f.result) { (r, ps) =>
+          val (expectedType, calledExpr) = ps
+
+          expectedType intersect calledExpr.t match {
+            case e: NoInterErr => e
+            case _ => f.result
           }
         }
       }

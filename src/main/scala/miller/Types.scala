@@ -25,12 +25,12 @@ case object TNull extends JSType {
 
 case class TFunction(params: Seq[IntersectT], result: InferredType) extends JSType {
   override def serialize(implicit st: ScopeStack) =
-    "Function " + params.map({ case IntersectT(i) => s"{ $i : ${ st.getGroupType(GroupID(i)) } }" }).mkString("(", ", ", ")") + " -> " + result.serialize
+    "Function " + params.map(_.serialize).mkString("(", ", ", ")") + " -> " + result.serialize
 
   def specialise(st: ScopeStack): TFunction = {
-    // TODO specialise function type
-    // Should copy type signature replacing ids to new ones
-    this.copy()
+    val (paramsCopy, retCopy) = st.copyFuncType(this.params, this.result)
+    this.copy(paramsCopy, retCopy)
+//    this
   }
 }
 case class TObject(properties: Map[String, InferredType]) extends JSType
@@ -68,9 +68,7 @@ sealed trait InferredType {
         case _              => other intersect this
       }
       case IntersectT(i)  => other match {
-        case IntersectT(v)  =>
-//          println(s"$i (${st.getGroupType(GroupID(i))}) intersect $v (${st.getGroupType(GroupID(v))})")
-          IntersectT(st.mergeGroupTypes(Set(GroupID(i), GroupID(v))).id)
+        case IntersectT(v)  => IntersectT(st.mergeGroupTypes(Set(GroupID(i), GroupID(v))).id)
         case _              => other intersect this
       }
     }
@@ -127,15 +125,16 @@ class ScopeStack {
   private def varUID(): VarID =     { _varUID += 1; VarID(_varUID) }
   private def groupUID(): GroupID = { _typeUID += 1; GroupID(_typeUID) }
 
-  def getId(name: String): Option[VarID] =
+  def getId(name: String): Option[VarID] = {
     scopes.collectFirst {
       /*  TODO: Refactor this
-       * Should take in an expression and:
-       * - if it's not a variable return a typeerror
-       * - if it's a property, find the type of the property (presumably a property check and recursive call)
-       * - if it's a variable, return the type
-       */
-    case x if x.contains(name) => x.get(name).get
+         * Should take in an expression and:
+         * - if it's not a variable return a typeerror
+         * - if it's a property, find the type of the property (presumably a property check and recursive call)
+         * - if it's a variable, return the type
+         */
+      case x if x.contains(name) => x.get(name).get
+    }
   }
 
   def declare(n: String, t: InferredType = AnyT): (VarID, GroupID) = {
@@ -214,27 +213,37 @@ class ScopeStack {
     varGroups.get(v).map(v => mergedGroups.getOrElse(v, v)).get
   }
 
-//  def mergeGroupTypes(vt: Set[GroupID]): GroupID = {
-//    implicit val st: ScopeStack = this
-//
-//    vt.foreach(mergedGroups += _ -> vt.min)
-//    groupTypes += vt.min -> vt.flatMap(groupTypes.get).reduceRight(_ intersect _)
-//    vt.min
-//  }
-
   def mergeGroupTypes(varIds: Set[GroupID]): GroupID = {
     implicit val st: ScopeStack = this
     val groupId = varIds.min // We'll merge all the other groups into the one with the smallest ID
+    val others = varIds - groupId
 
-    val others = varIds.filter(_ != groupId)
-
-    val t = varIds
-      .flatMap(groupTypes.remove).toSeq
-      .reduceRight(_ intersect _)
+    val t = varIds.flatMap(groupTypes.remove).reduceRight(_ intersect _)
 
     others.foreach(mergedGroups += _ -> groupId)
     groupTypes += (groupId -> t)
     groupId
+  }
+
+  def copyGroupType(gid: GroupID): GroupID = {
+    val newId = groupUID()
+
+    groupTypes += (newId -> groupTypes.get(mergedGroups.getOrElse(gid, gid)).get)
+
+    newId
+  }
+
+  def copyFuncType(vars: Seq[IntersectT], ret: InferredType): (Seq[IntersectT], InferredType) = {
+    val gidCache = collection.mutable.HashMap[GroupID, GroupID]()
+    val copyGid = (gid: IntersectT) => IntersectT(gidCache.getOrElseUpdate(GroupID(gid.vs), copyGroupType(GroupID(gid.vs))).id)
+
+    val varsCopy = vars.map(copyGid)
+    val retCopy = ret match {
+      case t: IntersectT => copyGid(t)
+      case anyOther => anyOther
+    }
+
+    (varsCopy, retCopy)
   }
 
   def typeOf(v: String): Seq[InferredType] = {
@@ -247,13 +256,15 @@ class ScopeStack {
   }
 
   override def toString = {
-    /* TODO: display all variables in all scopes
+    /* TODO: mergedGroups
      */
-    // (Int, InferredType) -> (Set(Int), InferredType) -> (Set(String), InferredType)
+    // (GroupID, InferredType) -> (Set(GroupID), InferredType) -> (Set(VarID), InferredType) -> (Set(String), InferredType)
     groupTypes map {
-      case (id, t) => varGroups.filter(_._2 == id).keySet.flatMap(vars.get) -> t
+        case (id, t) => (mergedGroups.toSet.filter(_._2 == id).map(_._1) + id) -> t
     } map {
-      case (names, t) => names.mkString("[ ", ", ", " ]") + " : " + t
+        case (gids, t) => varGroups.filter(gid => gids.contains(gid._2)).keySet.flatMap(vars.get) -> t
+    } map {
+      case (names, t) => names.mkString("[ ", ", ", " ]") + " : " + t.serialize(this)
     } mkString("{\n", "\n", "\n}")
   }
 }
