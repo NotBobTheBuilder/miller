@@ -86,10 +86,10 @@ object ASTf {
         case              AST.Undefined(pos) => Undefined(pos)
         case                   AST.This(pos) => This(pos)
 
-        case         AST.Member(e, mem, pos) => Loan(expr2f(e)) to (e => Member(e, mem, e.t, pos))
-        case       AST.CompMem(e, prop, pos) => Loan(expr2f(e)) to (e => CompMem(e, prop, e.t, pos))
-        case             AST.JsArray(e, pos) => Loan(exprSeq2f(e)) to (e => JsArray(e, ConstT(TArray(ConstT(TUndefined))), pos))
-        case            AST.JsObject(e, pos) => JsObject(Seq(), ConstT(TObject(Map())), pos)
+        case         AST.Member(e, mem, pos) => member(e, mem, pos)
+        case       AST.CompMem(e, prop, pos) => compMem(e, prop, pos)
+        case             AST.JsArray(e, pos) => litArray(exprSeq2f(e), pos)
+        case            AST.JsObject(e, pos) => litObject(e.map(e => e._1 -> expr2f(e._2)), pos)
         case             AST.New(e, ps, pos) => Loan(expr2f(e)) to (e => New(e, ps, e.t, pos))
 
         case  AST.Ternary(cond, tB, fB, pos) => Ternary(cond, tB, fB, tB.t intersect fB.t, pos)
@@ -103,60 +103,45 @@ object ASTf {
           val rt = st.returnType
           st.popScope()
 
-          ASTf.JSFunction(n, paramIds, block, ConstT(TFunction(tps, rt)), pos)
+          rt match {
+            case e: TypeError => ASTf.JSFunction(n, paramIds, block, e, pos)
+            case _ => ASTf.JSFunction(n, paramIds, block, ConstT(TFunction(tps, rt)), pos)
+          }
 
         case AST.JsCall(ff, ps, pos) =>
           val f = expr2f(ff)
-          JSCall(f, ps, applyCall(f.t, ps, st), pos) // TODO: this
+          JSCall(f, ps, applyCall(f.t, ps, st), pos)
       }
     }
 
     def applyCall(t: InferredType, ps: Seq[Expr], st: ScopeStack): InferredType = {
       implicit val sta = st
       t match {
-        case ConstT(t: TFunction) => applyFunction(t, ps)
+        case ConstT(t: TFunction) => t.callwith(ps)
         case IntersectT(i) => applyCall(st.getGroupType(GroupID(i)), ps, st)
-      }
-    }
-
-    def applyFunction(f: TFunction, ps: Seq[ASTf.Expr])(implicit st: ScopeStack): InferredType = {
-      if (f.params.length != ps.length) {
-        BadArgsErr(f, ps.map(_.t))
-      } else {
-        f.specialise(st)
-        f.params.zip(ps).foldLeft(f.result) { (r, ps) =>
-          val (expectedType, calledExpr) = ps
-
-          expectedType intersect calledExpr.t match {
-            case e: NoInterErr => e
-            case _ => f.result
-          }
-        }
+        case other => other
       }
     }
 
     implicit def exprSeq2f(s: Seq[AST.Expr])(implicit st: ScopeStack): Seq[ASTf.Expr] = s.map(expr2f)
-    implicit def exprPair2f(e: (AST.Expr, AST.Expr))(implicit st: ScopeStack): (ASTf.Expr, ASTf.Expr) = e match {
-      case e: (AST.Expr, AST.Expr) => (e._1, e._2)
-    }
+    implicit def exprPair2f(e: (AST.Expr, AST.Expr))(implicit st: ScopeStack): (ASTf.Expr, ASTf.Expr) = (e._1, e._2)
 
     implicit def statement2f(s: AST.Statement)(implicit st: ScopeStack): ASTf.Statement = s match {
       case e: AST.Expr                    => e
       case AST.Return(v, pos)             =>
-        // TODO double check correct IntersectT value is set here
-        // Parameter IntersectT doesn't seem to line up in a subtree like in
-        // function (a, b) { return a - b }
         val e = expr2f(v)
-        st.ret(e.t); ASTf.Return(e, pos)
+        st.ret(e.t)
+        ASTf.Return(e, pos)
+
       case AST.Declare(assignments, pos)   =>
-        val fpairs = assignments.map { assignment =>
-          val (ident, rhs) = assignment
+        val fpairs = assignments.map { case (ident, rhs) =>
           val frhs = rhs.map(expr2f)
           val t = frhs.map(_.t).getOrElse(AnyT)
 
           (st.declare(ident, t)._1, frhs, t)
         }
         ASTf.Declare(fpairs, pos)
+
       case AST.If(cond, block, pos)       => ASTf.If(cond, block, pos)
       case AST.IfElse(cond, tb, fb, pos)  => ASTf.IfElse(cond, tb, fb, pos)
       case AST.While(cond, b, pos)        => ASTf.While(cond, b, pos)
@@ -172,6 +157,33 @@ object ASTf {
   def ident(st: ScopeStack, n: String, pos: Position): Ident = {
     val vid = st.getId(n)
     Ident(vid, IntersectT(st.getGroup(vid.get).id), pos)
+  }
+
+  def litObject(es: Map[String, Expr], pos: Position)(implicit st: ScopeStack): ASTf.JsObject = {
+    JsObject(es, ConstT(TObject(collection.mutable.Map(es.map(e => e._1 -> e._2.t).toSeq: _*))), pos)
+  }
+
+  def litArray(es: Seq[Expr], pos: Position)(implicit st: ScopeStack): ASTf.JsArray = {
+    val arrT = es.foldLeft(AnyT: InferredType)(_ intersect _.t) match {
+      case e: TypeError => e
+      case t => ConstT(TArray(t))
+    }
+    JsArray(es, arrT, pos)
+  }
+
+  def member(exp: Expr, prop: String, pos: Position)(implicit st: ScopeStack): ASTf.Member = {
+    val propertyT = exp.t.actualT match {
+      case ConstT(t) => t.properties.getOrElse(prop, ConstT(TUndefined))
+    }
+    Member(exp, prop, propertyT, pos)
+  }
+
+  def compMem(exp: Expr, prop: Expr, pos: Position)(implicit st: ScopeStack): ASTf.CompMem = {
+    val t = exp.t.actualT match {
+      case ConstT(t: TArray) => t.t
+      case _ => ConstT(TUndefined)
+    }
+    CompMem(exp, prop, t, pos)
   }
 
   sealed trait Statement extends ASTNode {
@@ -241,9 +253,32 @@ object ASTf {
                                pos: Position) = {
       implicit val sta: ScopeStack = st
 
-      val tt = lhs.t intersect rhs.t intersect opT
+      def getMember(m: Member): InferredType = {
+        m.e.t.actualT match {
+          case ConstT(t: TObject) =>
+            // TODO check rhs.t canSatisfy lhs.t || lhs.t is undefined
+            t.properties += m.member -> rhs.t
+            rhs.t
+          case ConstT(t: TArray) =>
+            t.properties.getOrElse(m.member, t.t)
+        }
+      }
 
-      f(lhs, rhs, tt, pos)
+      def getCompMember(c: CompMem): InferredType = {
+        c.e.t match {
+          case ConstT(a: TArray) => a.t
+          case other => ConstT(TUndefined)
+        }
+      }
+
+      val lhst = lhs match {
+        case i: Ident => i.t
+        case m: Member => getMember(m)
+        case c: CompMem => getCompMember(c)
+        case other => NotAssignableErr(lhs.t, rhs.t)
+      }
+
+      f(lhs, rhs, lhst intersect rhs.t intersect opT, pos)
     }
 
     def postInc(that: Expr, pos: Position)(implicit st: ScopeStack) =                 uopp(st, PostInc,   ConstT(TNumber), that, pos)
@@ -386,6 +421,6 @@ object ASTf {
   case class CompMem(e: Expr, prop: Expr, t: InferredType, pos: Position) extends Value
   case class New(e: Expr, ps: Seq[Expr], t: InferredType, pos: Position) extends Value
   case class CommaList(es: Seq[Expr], t: InferredType, pos: Position) extends Value
-  case class JsObject(e: Seq[(String, Expr)], t: InferredType, pos: Position) extends Value
+  case class JsObject(e: Map[String, Expr], t: InferredType, pos: Position) extends Value
   case class JsArray(e: Seq[Expr], t: InferredType, pos: Position) extends Value
 }

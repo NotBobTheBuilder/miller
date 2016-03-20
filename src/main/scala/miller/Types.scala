@@ -1,40 +1,69 @@
 package miller
 
-sealed trait JSType {
+sealed trait JsType {
   def serialize(implicit st: ScopeStack) = this.toString
+
+  val properties: collection.Map[String, InferredType] = Map[String, InferredType]()
 }
 
-case object TNumber extends JSType {
+case object TNumber extends JsType {
   override def toString = "Number"
 }
-case object TRegExp extends JSType {
+case object TRegExp extends JsType {
   override def toString = "Number"
 }
-case object TString extends JSType {
+case object TString extends JsType {
   override def toString = "String"
 }
-case object TBoolean extends JSType {
+case object TBoolean extends JsType {
   override def toString = "Boolean"
 }
-case object TUndefined extends JSType {
+case object TUndefined extends JsType {
   override def toString = "Undefined"
 }
-case object TNull extends JSType {
+case object TNull extends JsType {
   override def toString = "Null"
 }
 
-case class TFunction(params: Seq[IntersectT], result: InferredType) extends JSType {
+case class TFunction(params: Seq[IntersectT], result: InferredType) extends JsType {
   override def serialize(implicit st: ScopeStack) =
     "Function " + params.map(_.serialize).mkString("(", ", ", ")") + " -> " + result.serialize
 
-  def specialise(st: ScopeStack): TFunction = {
-    val (paramsCopy, retCopy) = st.copyFuncType(this.params, this.result)
-    this.copy(paramsCopy, retCopy)
-//    this
+  def specialise(implicit st: ScopeStack) = TFunction.tupled(st.copyFuncType(this.params, this.result))
+
+  def callwith(ps: Seq[ASTf.Expr])(implicit st: ScopeStack): InferredType = {
+    if (this.params.length != ps.length) {
+      BadArgsErr(this, ps.map(_.t))
+    } else {
+      val TFunction(params, ret) = this.specialise
+
+      params.zip(ps).foldLeft(ret) { case (r, (expectedType, calledExpr)) =>
+        expectedType intersect calledExpr.t match {
+          case e: NoInterErr => e
+          case _ => r
+        }
+      }
+    }
   }
 }
-case class TObject(properties: Map[String, InferredType]) extends JSType
-case class TArray(t: InferredType) extends JSType
+
+case class TObject(override val properties: collection.mutable.Map[String, InferredType]) extends JsType {
+  def intersect(that: TObject)(implicit st: ScopeStack) = {
+    val props = this.properties
+      .keys
+      .filter(that.properties.contains)
+      .map(k => k -> (this.properties.get(k).get intersect that.properties.get(k).get))
+      .toSeq
+
+    if (props.isEmpty) {
+      NoInterErr(Set(ConstT(this), ConstT(that)))
+    } else {
+      ConstT(TObject(collection.mutable.Map(props: _*)))
+    }
+  }
+}
+
+case class TArray(t: InferredType) extends JsType
 
 sealed trait InferredType {
 
@@ -42,19 +71,24 @@ sealed trait InferredType {
     case AnyT           => "Any"
     case t: TypeError   => t.toString
     case ConstT(t)      => t.serialize
-    case SetT(ts)       => ts.map(_.serialize).mkString("{ ", " v ", "}")
-    case IntersectT(t)  => s"{ $t : ${st.getGroupType(GroupID(t)).serialize } }"
+    case SetT(ts)       => ts.map(_.serialize).mkString("{ ", " v ", " }")
+    case IntersectT(t)  => s"{ $t : ${ st.getGroupType(GroupID(t)).serialize } }"
   }
 
   def intersect(other: InferredType)(implicit st: ScopeStack): InferredType = {
     // TODO Consider unification vs pattern matching here
-    // Functional Progrmming Field & Harisson - Algorithm W / Type Checking etc
+    // Functional Programming Field & Harisson - Algorithm W / Type Checking etc
     this match {
       case AnyT           => other
       case t: TypeError   => this
       case ConstT(t)      => other match {
-        case ConstT(u)      => if (t == u)                ConstT(t) else NoInterErr(Set(ConstT(t), ConstT(u)))
-        case SetT(ts)       => if (ts contains t)         ConstT(t) else NoInterErr(Set(SetT(ts), ConstT(t)))
+        case ConstT(u)    => (t, u) match {
+                               case (t1: TObject, t2: TObject) => t1 intersect t2
+                               case _ if t == u => ConstT(t)
+                               case _ => NoInterErr(Set(ConstT(t), ConstT(u)))
+                             }
+
+        case SetT(ts)       =>  if (ts contains t)         ConstT(t) else NoInterErr(Set(SetT(ts), ConstT(t)))
         case IntersectT(i)  =>  if ((this canSatisfy other) || (other canSatisfy this)) {
                                   st.filterGroupType(GroupID(i), ConstT(t))
                                 } else {
@@ -74,7 +108,7 @@ sealed trait InferredType {
     }
   }
 
-  def isA(t: JSType)(implicit st: ScopeStack): Boolean = this match {
+  def isA(t: JsType)(implicit st: ScopeStack): Boolean = this match {
     case ConstT(TFunction(ps, r)) => t.isInstanceOf[TFunction]
     case ConstT(u) => u == t
     case IntersectT(i) => st.getGroupType(GroupID(i)) isA t
@@ -88,21 +122,34 @@ sealed trait InferredType {
     case SetT(ss) => ss.exists(this canSatisfy ConstT(_))
     case t: TypeError => false
   }
+
+  def actualT(implicit st: ScopeStack): DirectType = this match {
+    case IntersectT(i) => st.getGroupType(GroupID(i)).actualT
+    case a: DirectType => a
+  }
 }
 
-case object AnyT extends InferredType
+// Basically everything that's not an IntersectT
+sealed trait DirectType
 
-case class ConstT(t: JSType) extends InferredType {
+case object AnyT extends InferredType with DirectType
+
+case class ConstT(t: JsType) extends InferredType with DirectType {
   override def toString = t.toString
 }
-case class SetT(ts: Set[JSType]) extends InferredType {
+
+case class SetT(ts: Set[JsType]) extends InferredType with DirectType {
   override def toString = ts.mkString("[", ", ", "]")
 }
+
 case class IntersectT(vs: Int) extends InferredType
 
-sealed trait TypeError extends InferredType
+sealed trait TypeError extends InferredType with DirectType
+
 case class NoInterErr(possibles: Set[InferredType]) extends TypeError
 case class BadArgsErr(f: TFunction, e: Seq[InferredType]) extends TypeError
+case class NotAnObject(property: String) extends TypeError
+case class NotAssignableErr(assignee: InferredType, value: InferredType) extends TypeError
 
 
 case class VarID(id: Int)
@@ -115,9 +162,9 @@ class ScopeStack {
   private val scopes = collection.mutable.Stack(collection.mutable.HashMap[String, VarID]())
   private val signature = collection.mutable.Stack[(Seq[GroupID], InferredType)]()
 
-  private val varGroups = collection.mutable.HashMap[VarID, GroupID]()
-  private val mergedGroups = collection.mutable.HashMap[GroupID, GroupID]()
-  private val groupTypes = collection.mutable.HashMap[GroupID, InferredType]()
+  val varGroups = collection.mutable.HashMap[VarID, GroupID]()
+  val mergedGroups = collection.mutable.HashMap[GroupID, GroupID]()
+  val groupTypes = collection.mutable.HashMap[GroupID, InferredType]()
 
   var _varUID = 0
   var _typeUID = 0
@@ -153,7 +200,6 @@ class ScopeStack {
   def getName(id: VarID): Option[String] = vars.get(id)
 
   def pushScope(params: Seq[String]): Seq[VarID] = {
-    // TODO ???
     val ps = params.map { ident =>
       val (vid, gid) = declare(ident)
       (ident, vid, gid)
@@ -171,9 +217,6 @@ class ScopeStack {
   }
 
   def ret(t: InferredType): Unit = {
-    /* TODO: This should maintain a list of things attempted to be returned and ensure they're consistent
-     * TODO: Diverging returns like if(a) { return 1; } else { return "a"; } should be checked & rejected
-     */
     implicit val st: ScopeStack = this
 
     signature.push(signature.pop() match {
@@ -188,7 +231,7 @@ class ScopeStack {
 
   def paramTypes(implicit st: ScopeStack): Seq[IntersectT] =
     signature.top._1.map { group =>
-        IntersectT(mergedGroups.getOrElse(group, group).id)
+      IntersectT(mergedGroups.getOrElse(group, group).id)
     }
 
   def getType(nodeID: VarID): InferredType = {
@@ -237,13 +280,13 @@ class ScopeStack {
     val gidCache = collection.mutable.HashMap[GroupID, GroupID]()
     val copyGid = (gid: IntersectT) => IntersectT(gidCache.getOrElseUpdate(GroupID(gid.vs), copyGroupType(GroupID(gid.vs))).id)
 
-    val varsCopy = vars.map(copyGid)
-    val retCopy = ret match {
+    def returnCopy(r: InferredType): InferredType = r match {
       case t: IntersectT => copyGid(t)
+      case ConstT(f: TFunction) => ConstT(TFunction.tupled(f.params.map(copyGid), returnCopy(f.result)))
       case anyOther => anyOther
     }
 
-    (varsCopy, retCopy)
+    (vars.map(copyGid), returnCopy(ret))
   }
 
   def typeOf(v: String): Seq[InferredType] = {

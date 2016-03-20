@@ -1,12 +1,12 @@
 package miller
 
-case class Position(startLine: Int, startCol: Int, endLine: Int, endCol: Int) {
-  override def toString = s"l${startLine}c$startCol" //- l${endLine}c$endCol"
+case class Position(startLine: Int, startCol: Int, endLine: Int, endCol: Int) extends Ordered[Position] {
+  override def toString = s"l${startLine}c$startCol"
   def position = (" " * (startCol - 1)) + ("^" * (endCol - startCol))
 
   def union(that: Position) = {
-    val max = Position.max(this, that)
-    val min = Position.min(this, that)
+    val max = Set(this, that).max
+    val min = Set(this, that).min
     Position(
       min.startLine,
       min.startCol,
@@ -14,20 +14,9 @@ case class Position(startLine: Int, startCol: Int, endLine: Int, endCol: Int) {
       max.endCol
     )
   }
-}
 
-object Position {
-  def min(a: Position, b: Position): Position = {
-    if (a.startLine < b.startLine) a
-    else if (a.startLine == b.startLine && a.startCol < b.startCol) a
-    else b
-  }
-
-  def max(a: Position, b: Position): Position = {
-    if (a.startLine > b.startLine) a
-    else if (a.startLine == b.startLine && a.startCol > b.startCol) a
-    else b
-  }
+  def compare(that: Position) =
+    implicitly[Ordering[(Int, Int)]] compare ((this.startLine, this.startCol), (that.startLine, that.startCol))
 }
 
 trait Pos {
@@ -131,5 +120,5 @@ object AST {
   case class New(e: Expr, ps: Seq[Expr], pos: Position) extends Value
   case class CommaList(es: Seq[Expr], pos: Position) extends Value
   case class JsArray(e: Seq[Expr], pos: Position) extends Value
-  case class JsObject(e: Seq[(String, Expr)], pos: Position) extends Value
+  case class JsObject(e: Map[String, Expr], pos: Position) extends Value
 }

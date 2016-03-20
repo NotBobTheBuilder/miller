@@ -67,7 +67,7 @@ object Parsing extends PackratParsers with ParsingUtils {
   lazy val jsEq: P[Expr] =                  jsInstanceOf ~ ("==" ~> jsEq?)              ::> Eq.tupled
 
   lazy val jsInstanceOf: P[Expr] =          jsIn ~ ("instanceof" ~> jsInstanceOf?)      ::> InstanceOf.tupled
-  lazy val jsIn: P[Expr] =                  jsGtEq ~ (wsReq('i'~'n') ~> jsIn?)          ::> In.tupled
+  lazy val jsIn: P[Expr] =                  jsGtEq ~ (wsReq("in") ~> jsIn?)             ::> In.tupled
   lazy val jsGtEq: P[Expr] =                jsGt ~ (">=" ~> jsGtEq?)                    ::> GtEq.tupled
   lazy val jsGt: P[Expr] =                  jsLtEq ~ (">" ~> jsGt?)                     ::> Gt.tupled
   lazy val jsLtEq: P[Expr] =                jsLt ~ ("<=" ~> jsLtEq?)                    ::> LtEq.tupled
@@ -146,14 +146,14 @@ object Parsing extends PackratParsers with ParsingUtils {
   lazy val jsIdentifier =                   ident                                       :>  Ident.tupled
 
   lazy val objPair =                        (stringLit | numericLit | ident) ~
-    (":" ~> jsExprTop)                            :>  { case (k ~ v, pos) => (k, v) }
+                                              (":" ~> jsExprTop)                        :>  { case (k ~ v, pos) => (k, v) }
 
-  lazy val jsObject =                       "{" ~> (repsep(objPair, ",") <~ "}")        :>  JsObject.tupled
+  lazy val jsObject =                       "{" ~> (repsep(objPair, ",") <~ "}")        :>  { case (es, pos) => JsObject(es.toMap, pos) }
   lazy val jsArray =                        "[" ~> (repsep(jsExprTop, ",") <~ "]")      :>  JsArray.tupled
 
   lazy val jsReturn =                       "return" ~> jsExpr                          :>  Return.tupled
-  lazy val jsDeclareWithVal =               ident ~ "=" ~ jsExprTop                 ^^  { case (id ~ "=" ~ e) => (id, Some(e)) }
-  lazy val jsDeclareNoVal =                 ident                                ^^  { case (id)           => (id, None) }
+  lazy val jsDeclareWithVal =               ident ~ "=" ~ jsExprTop                     ^^  { case (id ~ "=" ~ e) => (id, Some(e)) }
+  lazy val jsDeclareNoVal =                 ident                                       ^^  { case (id)           => (id, None) }
   lazy val jsDeclare =                      "var" ~> repsep(wsOpt(jsDeclareWithVal | jsDeclareNoVal), ",") :> Declare.tupled
 
   lazy val jsCond =                         "(" ~> (jsCommas <~ ")")
@@ -164,7 +164,6 @@ object Parsing extends PackratParsers with ParsingUtils {
 
   lazy val jsForInit =                      (jsDeclare | jsExpr)?
 
-  // TODO : For x in y
   lazy val jsFor3 =                         "(" ~> jsForInit ~ (";" ~> (jsExpr?)) ~
                                               (";" ~> (jsExpr?) <~ ")")                 :>  { case (dec ~ comp ~ exp, pos) => Undefined(pos) }
 
@@ -173,7 +172,7 @@ object Parsing extends PackratParsers with ParsingUtils {
                                                 ~ ident
                                                 ~ "in"
                                                 ~ jsExprTop
-                                            ) <~ ")")                                   :> { case (v ~ i ~ "in" ~ exp, pos) => Undefined(pos) }
+                                            ) <~ ")")                                   :>  { case (v ~ i ~ "in" ~ exp, pos) => Undefined(pos) }
 
   lazy val jsForCond =                      jsFor3 | jsFor1
 
@@ -183,15 +182,15 @@ object Parsing extends PackratParsers with ParsingUtils {
 
   lazy val jsTry =                          "try" ~> jsBlock ~ "catch" ~ "(" ~ ident ~ ")" ~ jsBlock :> { case (b ~ _ ~ _ ~ id ~ _ ~ b2, pos) => Undefined(pos) }
 
-  lazy val jsSwitch =                       "switch" ~> jsCond ~ jsSwitchBlock          :> { case (cond ~ block, pos) => Undefined(pos)}
-  lazy val jsSwitchBlock =                  "{" ~> (jsCase.* <~ "}")                    :> { case (cases, pos) => Undefined(pos) }
+  lazy val jsSwitch =                       "switch" ~> jsCond ~ jsSwitchBlock          :>  { case (cond ~ block, pos) => Undefined(pos)}
+  lazy val jsSwitchBlock =                  "{" ~> (jsCase.* <~ "}")                    :>  { case (cases, pos) => Undefined(pos) }
   lazy val jsCase =                         "case" ~> (jsExpr <~ ":") ~
-                                                (blockStmts <~ (jsBreak?))              :> { case (cond ~ block, pos) => Undefined(pos)}
+                                                (blockStmts <~ (jsBreak?))              :>  { case (cond ~ block, pos) => Undefined(pos)}
 
   lazy val jsBreak =                        "break" ~ (";"?)
   lazy val jsContinue =                     "continue" ~ (";"?)
 
-  lazy val jsThrow =                        "throw" ~> jsExpr                           :> { case (e, pos) => Undefined(pos) }
+  lazy val jsThrow =                        "throw" ~> jsExpr                           :>  { case (e, pos) => Undefined(pos) }
 
   lazy val jsProgram: P[Program] =          jsStmt.*                                    :>  { case (prog, pos) => Program(prog, pos) }
 
@@ -211,8 +210,8 @@ object Parsing extends PackratParsers with ParsingUtils {
 trait ParsingUtils extends Parsers {
   type Elem = Char
 
-  def jsLiteralParser[T <: Value](token: String, apply: (Position) => T): Parser[T] =
-    Parser[T] { (token: Parser[String]) :> { case (s, pos) => apply(pos) } }
+  def jsLiteralParser[T <: Value](token: Parser[String], apply: (Position) => T) =
+    Parser[T] { token :> (res => apply(res._2)) }
 
   implicit class PositionedParser[T](parser: Parser[T]) {
     def :>[U](p: ((T, Position)) => U): Parser[U] = Parser { in =>
@@ -223,8 +222,8 @@ trait ParsingUtils extends Parsers {
     }
   }
 
-  implicit class FirstFirstParser[T](parser: Parser[~[Expr, Option[T]]]) {
-    def ::>(p: ((Expr, T, Position)) => Expr): Parser[Expr] = parser :> {
+  implicit class FirstFirstParser[U, T](parser: Parser[U ~ Option[T]]) {
+    def ::>(p: ((U, T, Position)) => U): Parser[U] = parser :> {
       case (e ~ Some(e1), pos) => p((e, e1, pos))
       case (e ~ None, pos) => e
     }
@@ -240,12 +239,12 @@ trait ParsingUtils extends Parsers {
     )
 
   def commentBlockEnd: Parser[Any] = (
-    '*' ~ '/'  ^^ { case _ => ' '  }
-      | charExcept(EofCh) ~ commentBlockEnd
-    )
+    '*' ~ '/'  ^^ { case _ => ' ' }
+    | charExcept(EofCh) ~ commentBlockEnd
+  )
 
   def wsOpt[T](p: Parser[T]): Parser[T] = whitespace.* ~> (p <~ whitespace.*)
-  def wsReq[T](p: Parser[T]): Parser[T] = whitespace.* ~> (p <~ whitespace.+)
+  def wsReq(p: String): Parser[String] = whitespace.* ~> (p <~ whitespace.+)
 
   implicit def string2Parser(s: String): Parser[String] = wsOpt(acceptSeq(s).map(_ => s))
 }
