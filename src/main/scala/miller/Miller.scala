@@ -1,7 +1,5 @@
 package miller
 
-import miller.ASTf.Expr
-
 import scala.io.Source.{stdin, fromFile}
 
 object Miller {
