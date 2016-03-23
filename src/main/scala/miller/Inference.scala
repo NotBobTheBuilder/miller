@@ -25,6 +25,7 @@ object Inference {
     ss.flatMap {
       case Declare(es, pos)               => es.flatMap(e => checkOne(e._3, pos))
       case While(c, bs, pos)              => checkOne(c.t, c.pos) ++ check(bs, st)
+      case JsForIn(i, c, bs, pos)         => checkOne(c.t, c.pos) ++ check(bs, st)
       case If(c, bs, pos)                 => checkOne(c.t, c.pos) ++ check(bs, st)
       case IfElse(c, ts, fs, pos)         => checkOne(c.t, c.pos) ++ check(ts, st) ++ check(fs, st)
       case Return(e, pos)                 => checkOne(e.t, pos)

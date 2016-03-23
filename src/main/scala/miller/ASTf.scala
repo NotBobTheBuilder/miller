@@ -23,7 +23,7 @@ object ASTf {
     def annotateSource(source: Seq[String]): String = {
       source.zipWithIndex.flatMap({
         case (s, r) => typeAnnotations(r + 1).flatMap {
-          case (ps, t) => Seq(s, ps.position, ps.paddedPrefix(t.serialize(stack)))
+          case (ps, t) => Seq(s, ps.position, ps.paddedPrefix(t.serialize(stack)) + "\n")
         }
       }).mkString("\n")
     }
@@ -168,6 +168,7 @@ object ASTf {
       case AST.If(cond, block, pos)       => ASTf.If(cond, block, pos)
       case AST.IfElse(cond, tb, fb, pos)  => ASTf.IfElse(cond, tb, fb, pos)
       case AST.While(cond, b, pos)        => ASTf.While(cond, b, pos)
+      case AST.JsForIn(ident, e, b, pos)  => ASTf.JsForIn(ident, e, b, pos)
     }
     implicit def statSeq2f(s: Seq[AST.Statement])(implicit st: ScopeStack): Seq[ASTf.Statement] = s.map(statement2f)
 
@@ -230,6 +231,15 @@ object ASTf {
     pos: Position
   ) extends Statement {
     def typeAnnotations(m: Map[Int, TypeLines]) = (cond +: block).foldLeft(m)((types, stmt) => stmt.typeAnnotations(types))
+  }
+
+  case class JsForIn(
+    ident: String,
+    expr: Expr,
+    block: Seq[Statement],
+    pos: Position
+  ) extends Statement {
+    def typeAnnotations(m: Map[Int, TypeLines]) = (expr +: block).foldLeft(m)((types, stmt) => stmt.typeAnnotations(types))
   }
 
   case class If(

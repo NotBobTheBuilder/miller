@@ -239,6 +239,7 @@ trait ParsingUtils extends Parsers {
     | charExcept(EofCh) ~ commentBlockEnd
   )
 
+  // TODO: the position returned by this seems to include the trailing whitespace. Figure that out.
   def wsOpt[T](p: Parser[T]): Parser[T] = whitespace.* ~> (p <~ whitespace.*)
   def wsReq(p: String): Parser[String] = whitespace.* ~> (p <~ whitespace.+)
 
