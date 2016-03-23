@@ -28,15 +28,16 @@ object Inference {
       case If(c, bs, pos)                 => checkOne(c.t, c.pos) ++ check(bs, st)
       case IfElse(c, ts, fs, pos)         => checkOne(c.t, c.pos) ++ check(ts, st) ++ check(fs, st)
       case Return(e, pos)                 => checkOne(e.t, pos)
-      case JSFunction(_, _, bs, t, pos)   => check(bs, st) ++ checkOne(t, pos)
+      case JsFunction(_, _, bs, t, pos)   => check(bs, st) ++ checkOne(t, pos)
       case e: Expr                        => checkOne(e.t, e.pos)
     }
   }
 
   def checkOne(a: InferredType, pos: Position): Seq[(Position, String)] = {
     a match {
-      case NoInterErr(ts) => Seq(pos -> s"Type Error - incompatible types: ${ts.mkString(" | ")}")
+      case NoInterErr(ts) => Seq(pos -> s"Type Error - ${ts.head} isn't compatible with ${ts.tail.mkString(" v ")}")
       case BadArgsErr(f, e) => Seq(pos -> s"Function takes ${f.params.length}, called with ${e.length}")
+      case e: TypeError => Seq(pos -> s"Type Error: $e")
       case _ => Seq()
     }
   }

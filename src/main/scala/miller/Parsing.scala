@@ -160,22 +160,18 @@ object Parsing extends PackratParsers with ParsingUtils {
 
   lazy val jsWhile =                        "while" ~> jsCond ~ jsBlock                 :>  { case (cond ~ block, pos) => While(cond, block, pos) }
 
-  lazy val jsFor =                          "for" ~> jsForCond ~ jsBlock                :>  { case (cond ~ block, pos) => Undefined(pos) }
+  lazy val jsFor =                          "for" ~> (jsFor1 | jsFor3)                  :>  { case (cond, pos) => cond.copy(pos = cond.pos.union(pos)) }
 
   lazy val jsForInit =                      (jsDeclare | jsExpr)?
 
   lazy val jsFor3 =                         "(" ~> jsForInit ~ (";" ~> (jsExpr?)) ~
-                                              (";" ~> (jsExpr?) <~ ")")                 :>  { case (dec ~ comp ~ exp, pos) => Undefined(pos) }
+                                              (";" ~> (jsExpr?) <~ ")") ~ jsBlock       :>  { case (dec ~ comp ~ exp ~ block, pos) => ??? }
 
   lazy val jsFor1 =                         ("(" ~> (
-                                              "var".?
-                                                ~ ident
-                                                ~ "in"
-                                                ~ jsExprTop
-                                            ) <~ ")")                                   :>  { case (v ~ i ~ "in" ~ exp, pos) => Undefined(pos) }
-
-  lazy val jsForCond =                      jsFor3 | jsFor1
-
+                                              "var" ~>  ident
+                                                    ~   "in"
+                                                    ~   jsExprTop
+                                            ) <~ ")") ~ jsBlock                         :>  { case (i ~ "in" ~ exp ~ b, pos) => JsForIn(i, exp, b, pos) }
 
   lazy val jsIf =                           "if" ~> jsCond ~ jsBlock                    :>  { case (cond ~ block, pos) => If(cond, block, pos) }
   lazy val jsIfElse =                       jsIf ~ ("else" ~> jsBlock)                  :>  { case (If(c, b, pos) ~ fblock, pos2) => IfElse(c, b, fblock, pos union pos2) }

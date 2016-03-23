@@ -1,3 +1,5 @@
+import sbtassembly.AssemblyPlugin.defaultShellScript
+
 name := "miller-prime"
 
 version := "1.0"
@@ -9,3 +11,5 @@ libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % 
 scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-Ypatmat-exhaust-depth", "80")
 
 assemblyJarName in assembly := "miller.jar"
+
+assemblyOption in assembly := (assemblyOption in assembly).value.copy(prependShellScript = Some(defaultShellScript))

@@ -8,9 +8,27 @@ case class Loan[T, U](l: T) {
 
 object ASTf {
 
-  sealed trait ASTNode extends Pos
+  sealed trait ASTNode extends Pos {
+    type TypeLines = Seq[(Position, InferredType)]
 
-  case class Program(statements: Seq[Statement], stack: ScopeStack, pos: Position) extends Pos
+    def typeAnnotations(m: Map[Int, TypeLines]): Map[Int, TypeLines]
+    def addAnnotation(m: Map[Int, TypeLines], pos: Position, t: InferredType) = m ++ (pos.startLine to pos.endLine).map(l => l -> ((pos, t) +: m(l)))
+  }
+
+  case class Program(statements: Seq[Statement], stack: ScopeStack, pos: Position) extends Pos {
+    val typeAnnotations =
+      statements
+        .foldLeft(Map[Int, ASTNode#TypeLines]() withDefaultValue Seq[(Position, InferredType)]())((types, statement) => statement.typeAnnotations(types))
+
+    def annotateSource(source: Seq[String]): String = {
+      source.zipWithIndex.flatMap({
+        case (s, r) => typeAnnotations(r + 1).flatMap {
+          case (ps, t) => Seq(s, ps.position, ps.paddedPrefix(t.serialize(stack)))
+        }
+      }).mkString("\n")
+    }
+
+  }
 
   object Program {
 
@@ -104,13 +122,18 @@ object ASTf {
           st.popScope()
 
           rt match {
-            case e: TypeError => ASTf.JSFunction(n, paramIds, block, e, pos)
-            case _ => ASTf.JSFunction(n, paramIds, block, ConstT(TFunction(tps, rt)), pos)
+            case e: TypeError => ASTf.JsFunction(n, paramIds, block, e, pos)
+            case _ => ASTf.JsFunction(n, paramIds, block, ConstT(TFunction(tps, rt)), pos)
           }
 
-        case AST.JsCall(ff, ps, pos) =>
+        case AST.JsCall(ff, pps, pos) =>
           val f = expr2f(ff)
-          JSCall(f, ps, applyCall(f.t, ps, st), pos)
+          val ps = exprSeq2f(pps)
+          val resultType = ps.collectFirst({
+            case e: Expr if e.t.isInstanceOf[TypeError] => e.t
+          }).getOrElse(applyCall(f.t, ps, st))
+
+          JsCall(f, ps, resultType, pos)
       }
     }
 
@@ -173,6 +196,7 @@ object ASTf {
 
   def member(exp: Expr, prop: String, pos: Position)(implicit st: ScopeStack): ASTf.Member = {
     val propertyT = exp.t.actualT match {
+      case ConstT(t: TObject) => t.properties.getOrElse(prop, NotAProperty(t, prop))
       case ConstT(t) => t.properties.getOrElse(prop, ConstT(TUndefined))
     }
     Member(exp, prop, propertyT, pos)
@@ -190,27 +214,40 @@ object ASTf {
     val pos: Position
   }
 
-  case class Return(value: Expr, pos: Position) extends Statement
-  case class Declare(vars: Seq[(VarID, Option[Expr], InferredType)], pos: Position) extends Statement
+  case class Return(value: Expr, pos: Position) extends Statement {
+    def typeAnnotations(m: Map[Int, TypeLines]) = value.typeAnnotations(m)
+  }
+  case class Declare(vars: Seq[(VarID, Option[Expr], InferredType)], pos: Position) extends Statement {
+    def typeAnnotations(m: Map[Int, TypeLines]) = vars.foldLeft(m)((types, stmt) => stmt._2 match {
+      case None => types
+      case Some(e) => e.typeAnnotations(types)
+    })
+  }
 
   case class While(
     cond: Expr,
     block: Seq[Statement],
     pos: Position
-  ) extends Statement
+  ) extends Statement {
+    def typeAnnotations(m: Map[Int, TypeLines]) = (cond +: block).foldLeft(m)((types, stmt) => stmt.typeAnnotations(types))
+  }
 
   case class If(
     cond: Expr,
     block: Seq[Statement],
     pos: Position
-  ) extends Statement
+  ) extends Statement {
+    def typeAnnotations(m: Map[Int, TypeLines]) = (cond +: block).foldLeft(m)((types, stmt) => stmt.typeAnnotations(types))
+  }
 
   case class IfElse(
     cond: Expr,
     trueBlock: Seq[Statement],
     falseBlock: Seq[Statement],
     pos: Position
-  ) extends Statement
+  ) extends Statement {
+    def typeAnnotations(m: Map[Int, TypeLines]) = (cond +: (trueBlock ++ falseBlock)).foldLeft(m)((types, stmt) => stmt.typeAnnotations(types))
+  }
 
   sealed trait Expr extends Statement {
     val t: InferredType
@@ -343,68 +380,83 @@ object ASTf {
 
   sealed trait Op extends Expr
 
-  case class PostInc(exp: Expr, t: InferredType, pos: Position) extends Op
-  case class PostDec(exp: Expr, t: InferredType, pos: Position) extends Op
+  sealed trait UOp extends Op {
+    val exp: Expr
+    def typeAnnotations(m: Map[Int, TypeLines]) = exp.typeAnnotations(addAnnotation(m, pos, t))
+  }
 
-  case class Not(exp: Expr, t: InferredType, pos: Position) extends Op
-  case class BitNot(exp: Expr, t: InferredType, pos: Position) extends Op
-  case class UAdd(exp: Expr, t: InferredType, pos: Position) extends Op
-  case class USub(exp: Expr, t: InferredType, pos: Position) extends Op
+  sealed trait BinOp extends Op {
+    val lhs: Expr
+    val rhs: Expr
+    def typeAnnotations(m: Map[Int, TypeLines]) = Seq(lhs, rhs).foldLeft(addAnnotation(m, pos, t))((types, stmt) => stmt.typeAnnotations(types))
+  }
 
-  case class PreInc(exp: Expr, t: InferredType, pos: Position) extends Op
-  case class PreDec(exp: Expr, t: InferredType, pos: Position) extends Op
+  case class PostInc(exp: Expr, t: InferredType, pos: Position) extends UOp
+  case class PostDec(exp: Expr, t: InferredType, pos: Position) extends UOp
 
-  case class TypeOf(exp: Expr, t: InferredType, pos: Position) extends Op
-  case class Void(exp: Expr, t: InferredType, pos: Position) extends Op
-  case class Delete(exp: Expr, t: InferredType, pos: Position) extends Op
+  case class Not(exp: Expr, t: InferredType, pos: Position) extends UOp
+  case class BitNot(exp: Expr, t: InferredType, pos: Position) extends UOp
+  case class UAdd(exp: Expr, t: InferredType, pos: Position) extends UOp
+  case class USub(exp: Expr, t: InferredType, pos: Position) extends UOp
 
-  case class Mul(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
-  case class Div(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
-  case class Mod(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
+  case class PreInc(exp: Expr, t: InferredType, pos: Position) extends UOp
+  case class PreDec(exp: Expr, t: InferredType, pos: Position) extends UOp
 
-  case class Add(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
-  case class Sub(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
+  case class TypeOf(exp: Expr, t: InferredType, pos: Position) extends UOp
+  case class Void(exp: Expr, t: InferredType, pos: Position) extends UOp
+  case class Delete(exp: Expr, t: InferredType, pos: Position) extends UOp
 
-  case class LShift(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
-  case class RShift(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
-  case class URShift(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
+  case class Mul(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class Div(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class Mod(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
 
-  case class Lt(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
-  case class LtEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
-  case class Gt(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
-  case class GtEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
+  case class Add(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class Sub(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
 
-  case class In(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
-  case class InstanceOf(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
+  case class LShift(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class RShift(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class URShift(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
 
-  case class Eq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
-  case class NEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
-  case class EEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
-  case class NEEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
+  case class Lt(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class LtEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class Gt(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class GtEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
 
-  case class BinAnd(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
-  case class BinXor(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
-  case class BinOr(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
+  case class In(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class InstanceOf(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
 
-  case class And(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
-  case class Or(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends Op
+  case class Eq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class NEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class EEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class NEEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
 
-  case class Ternary(cond: Expr, tBlock: Expr, fBlock: Expr, t: InferredType, pos: Position) extends Op
+  case class BinAnd(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class BinXor(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class BinOr(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
 
-  case class Assign(variable: Expr, value: Expr, t: InferredType, pos: Position) extends Op
-  case class AddEq(variable: Expr, value: Expr, t: InferredType, pos: Position) extends Op
-  case class SubEq(variable: Expr, value: Expr, t: InferredType, pos: Position) extends Op
-  case class DivEq(variable: Expr, value: Expr, t: InferredType, pos: Position) extends Op
-  case class MulEq(variable: Expr, value: Expr, t: InferredType, pos: Position) extends Op
-  case class ModEq(variable: Expr, value: Expr, t: InferredType, pos: Position) extends Op
-  case class LShiftEq(variable: Expr, value: Expr, t: InferredType, pos: Position) extends Op
-  case class RShiftEq(variable: Expr, value: Expr, t: InferredType, pos: Position) extends Op
-  case class URShiftEq(variable: Expr, value: Expr, t: InferredType, pos: Position) extends Op
-  case class BinAndEq(variable: Expr, value: Expr, t: InferredType, pos: Position) extends Op
-  case class BinXorEq(variable: Expr, value: Expr, t: InferredType, pos: Position) extends Op
-  case class BinOrEq(variable: Expr, value: Expr, t: InferredType, pos: Position) extends Op
+  case class And(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class Or(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
 
-  sealed trait Value extends Expr
+  case class Assign(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class AddEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class SubEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class DivEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class MulEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class ModEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class LShiftEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class RShiftEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class URShiftEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class BinAndEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class BinXorEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+  case class BinOrEq(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
+
+  case class Ternary(cond: Expr, tBlock: Expr, fBlock: Expr, t: InferredType, pos: Position) extends Op {
+    def typeAnnotations(m: Map[Int, TypeLines]) = Seq(cond, tBlock, fBlock).foldLeft(addAnnotation(m, pos, t))((types, stmt) => stmt.typeAnnotations(types))
+  }
+
+  sealed trait Value extends Expr {
+    def typeAnnotations(m: Map[Int, TypeLines]) = addAnnotation(m, pos, t)
+  }
 
   case class Ident(varID: Option[VarID], t: InferredType, pos: Position) extends Value
   case class LiteralRegExp(chars: String, flags: String, pos: Position, t: InferredType = ConstT(TRegExp)) extends Value
@@ -415,12 +467,25 @@ object ASTf {
   case class Null(pos: Position, t: InferredType = ConstT(TNull)) extends Value
   case class Undefined(pos: Position, t: InferredType = ConstT(TUndefined)) extends Value
   case class This(pos: Position, t: InferredType = ConstT(TUndefined)) extends Value
-  case class JSFunction(name: Option[String], params: Seq[VarID], block: Seq[Statement], t: InferredType, pos: Position) extends Value
-  case class JSCall(f: Expr, ps: Seq[Expr], t: InferredType, pos: Position) extends Value
+
+  case class JsFunction(name: Option[String], params: Seq[VarID], block: Seq[Statement], t: InferredType, pos: Position) extends Value {
+    override def typeAnnotations(m: Map[Int, TypeLines]) = block.foldLeft(addAnnotation(m, pos, t))((types, stmt) => stmt.typeAnnotations(types))
+  }
+  case class JsCall(f: Expr, ps: Seq[Expr], t: InferredType, pos: Position) extends Value {
+    override def typeAnnotations(m: Map[Int, TypeLines]) = (f +: ps).foldLeft(addAnnotation(m, pos, t))((types, stmt) => stmt.typeAnnotations(types))
+  }
   case class Member(e: Expr, member: String, t: InferredType, pos: Position) extends Value
   case class CompMem(e: Expr, prop: Expr, t: InferredType, pos: Position) extends Value
-  case class New(e: Expr, ps: Seq[Expr], t: InferredType, pos: Position) extends Value
-  case class CommaList(es: Seq[Expr], t: InferredType, pos: Position) extends Value
-  case class JsObject(e: Map[String, Expr], t: InferredType, pos: Position) extends Value
-  case class JsArray(e: Seq[Expr], t: InferredType, pos: Position) extends Value
+  case class New(e: Expr, ps: Seq[Expr], t: InferredType, pos: Position) extends Value {
+    override def typeAnnotations(m: Map[Int, TypeLines]) = (e +: ps).foldLeft(addAnnotation(m, pos, t))((types, stmt) => stmt.typeAnnotations(types))
+  }
+  case class CommaList(es: Seq[Expr], t: InferredType, pos: Position) extends Value {
+    override def typeAnnotations(m: Map[Int, TypeLines]) = es.foldLeft(addAnnotation(m, pos, t))((types, stmt) => stmt.typeAnnotations(types))
+  }
+  case class JsObject(e: Map[String, Expr], t: InferredType, pos: Position) extends Value {
+    override def typeAnnotations(m: Map[Int, TypeLines]) = e.values.foldLeft(addAnnotation(m, pos, t))((types, stmt) => stmt.typeAnnotations(types))
+  }
+  case class JsArray(e: Seq[Expr], t: InferredType, pos: Position) extends Value {
+    override def typeAnnotations(m: Map[Int, TypeLines]) = e.foldLeft(addAnnotation(m, pos, t))((types, stmt) => stmt.typeAnnotations(types))
+  }
 }

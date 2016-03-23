@@ -14,9 +14,9 @@ object Checker {
     true  -> "function (a,b,c) {return 3;};",
     true  -> "function foo (a,b,c) {return 3;};",
     true  -> "var a = 1; var b = 2; var c = 3;",
-    true  -> "var alert = function (i) {}; var a = 1; var b = 2; var c = 3; alert(a + b + c); ",
-    true  -> "var alert = function (i) {}; var a = 1; var b = 2; if (a <= b) { alert('ok'); } ;",
-    true  -> "var alert = function (i) {}; var a = 1; var b = 2; if (a <= b) { alert('ok'); } ;",
+    true  -> "var a = 1; var b = 2; var c = 3; alert(a + b + c); ",
+    true  -> "var a = 1; var b = 2; if (a <= b) { alert('ok'); } ;",
+    true  -> "var a = 1; var b = 2; if (a <= b) { alert('ok'); } ;",
     true  -> "var add = function (a, b) {return a + b}; var b = add(1, 2);",
     true  -> "function (a, b) {return a - b};",
     true  -> "var add = function (a, b) { return function(c) { return a + b + c } }",
@@ -63,9 +63,12 @@ object Checker {
 
     true  -> "var x = [{a: 1}, {a: 2}, {a: 3}]",
     false -> "var x = [{a: 1}, {b: 2}, {c: 3}]",
-    true  -> "var x = [{name: 'Jack', age: 22}, {make: 'Citroen C1', age: 6}]"
+    true  -> "var x = [{name: 'Jack', age: 22}, {make: 'Citroen C1', age: 6}]",
 
-    ).foldLeft((0,0)) { case ((ps, fs), (expected, code)) =>
+    true  -> "var x = [{name: 'Jack', age: 22}, {make: 'Citroen C1', age: 6}]; var i = 0; while (x.length < i++) { console.log(x[i].age); }",
+    false -> "var x = [{name: 'Jack', age: 22}, {make: 'Citroen C1', age: 6}]; var i = 0; while (x.length < i++) { console.log(x[i].name); }"
+
+    ).foldLeft(0 -> 0) { case ((ps, fs), (expected, code)) =>
       try {
         val (res, errs) = Inference.test(code)
         if (res == expected) {

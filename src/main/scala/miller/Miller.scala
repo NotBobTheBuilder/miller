@@ -2,21 +2,19 @@ package miller
 
 import miller.ASTf.Expr
 
-import scala.io.Source.stdin
+import scala.io.Source.{stdin, fromFile}
 
 object Miller {
   def main(args: Array[String]): Unit = {
-    val code = stdin.getLines().mkString("\n")
+    val code = args.headOption
+                    .map(fromFile(_).getLines())
+                    .getOrElse(stdin.getLines())
+                    .toSeq
 
-    val parsed = Parsing.parse(code)
-    val checked = Inference.check(code)
-    println(parsed)
+    val parsed = Parsing.parse(code.mkString("\n"))
+    val checked = Inference.check(code.mkString("\n"))
+
+    println(parsed.annotateSource(code))
     println(checked)
-    println(parsed.stack.groupTypes)
-    println(parsed.statements.lastOption match {
-      case Some(e: Expr) => e.t
-      case _ => "(Not an expression)"
-    })
-    // TODO : Generate buggy function call counterexamples
   }
 }

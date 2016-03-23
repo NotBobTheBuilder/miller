@@ -2,7 +2,8 @@ package miller
 
 case class Position(startLine: Int, startCol: Int, endLine: Int, endCol: Int) extends Ordered[Position] {
   override def toString = s"l${startLine}c$startCol"
-  def position = (" " * (startCol - 1)) + ("^" * (endCol - startCol))
+  def position = paddedPrefix("^" * (endCol - startCol))
+  def paddedPrefix(s: String) = (" " * (startCol - 1)) + s
 
   def union(that: Position) = {
     val max = Set(this, that).max
@@ -34,6 +35,8 @@ object AST {
   case class Return(value: Expr, pos: Position) extends Statement
   case class Declare(vars: Seq[(String, Option[Expr])], pos: Position) extends Statement
   case class While(cond: Expr, block: Seq[Statement], pos: Position) extends Statement
+//  case class JsFor(cond: Expr, block: Seq[Statement], pos: Position) extends Statement
+  case class JsForIn(ident: String, expr: Expr, block: Seq[Statement], pos: Position) extends Statement
   case class If(cond: Expr, block: Seq[Statement], pos: Position) extends Statement
   case class IfElse(cond: Expr, tBlock: Seq[Statement], fBlock: Seq[Statement], pos: Position) extends Statement
 

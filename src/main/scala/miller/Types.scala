@@ -25,7 +25,7 @@ case object TNull extends JsType {
   override def toString = "Null"
 }
 
-case class TFunction(params: Seq[IntersectT], result: InferredType) extends JsType {
+case class TFunction(params: Seq[InferredType], result: InferredType) extends JsType {
   override def serialize(implicit st: ScopeStack) =
     "Function " + params.map(_.serialize).mkString("(", ", ", ")") + " -> " + result.serialize
 
@@ -48,6 +48,9 @@ case class TFunction(params: Seq[IntersectT], result: InferredType) extends JsTy
 }
 
 case class TObject(override val properties: collection.mutable.Map[String, InferredType]) extends JsType {
+
+  override def serialize(implicit st: ScopeStack) = properties.map({ case (k, v) => k + ": " + v.serialize }).mkString("Object { ", ", ", " }")
+
   def intersect(that: TObject)(implicit st: ScopeStack) = {
     val props = this.properties
       .keys
@@ -63,7 +66,11 @@ case class TObject(override val properties: collection.mutable.Map[String, Infer
   }
 }
 
-case class TArray(t: InferredType) extends JsType
+case class TArray(t: InferredType) extends JsType {
+  override val properties = Map("length" -> ConstT(TNumber))
+
+  override def serialize(implicit st: ScopeStack) = "Array<" + t.serialize + ">"
+}
 
 sealed trait InferredType {
 
@@ -148,7 +155,7 @@ sealed trait TypeError extends InferredType with DirectType
 
 case class NoInterErr(possibles: Set[InferredType]) extends TypeError
 case class BadArgsErr(f: TFunction, e: Seq[InferredType]) extends TypeError
-case class NotAnObject(property: String) extends TypeError
+case class NotAProperty(obj: TObject, property: String) extends TypeError
 case class NotAssignableErr(assignee: InferredType, value: InferredType) extends TypeError
 
 
@@ -171,6 +178,8 @@ class ScopeStack {
 
   private def varUID(): VarID =     { _varUID += 1; VarID(_varUID) }
   private def groupUID(): GroupID = { _typeUID += 1; GroupID(_typeUID) }
+
+  definePervasives()
 
   def getId(name: String): Option[VarID] = {
     scopes.collectFirst {
@@ -276,9 +285,13 @@ class ScopeStack {
     newId
   }
 
-  def copyFuncType(vars: Seq[IntersectT], ret: InferredType): (Seq[IntersectT], InferredType) = {
+  def copyFuncType(vars: Seq[InferredType], ret: InferredType): (Seq[InferredType], InferredType) = {
     val gidCache = collection.mutable.HashMap[GroupID, GroupID]()
-    val copyGid = (gid: IntersectT) => IntersectT(gidCache.getOrElseUpdate(GroupID(gid.vs), copyGroupType(GroupID(gid.vs))).id)
+    val copyGid = { (i: InferredType) => i match {
+        case (gid: IntersectT) => IntersectT(gidCache.getOrElseUpdate(GroupID(gid.vs), copyGroupType(GroupID(gid.vs))).id)
+        case other => other
+      }
+    }
 
     def returnCopy(r: InferredType): InferredType = r match {
       case t: IntersectT => copyGid(t)
@@ -309,5 +322,12 @@ class ScopeStack {
     } map {
       case (names, t) => names.mkString("[ ", ", ", " ]") + " : " + t.serialize(this)
     } mkString("{\n", "\n", "\n}")
+  }
+
+  def definePervasives() = {
+    this.declare("console", ConstT(TObject(collection.mutable.Map(
+      "log" -> ConstT(TFunction(Seq(AnyT), ConstT(TUndefined)))
+    ))))
+    this.declare("alert", ConstT(TFunction(Seq(AnyT), ConstT(TUndefined))))
   }
 }
