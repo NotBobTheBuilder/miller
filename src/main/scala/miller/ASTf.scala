@@ -264,42 +264,28 @@ object ASTf {
   }
 
   object Expr {
-    def uopp[T <: Expr](st: ScopeStack,
-                        f: (Expr, InferredType, Position) => T,
+    def uopp[T <: Expr](f: (Expr, InferredType, Position) => T,
                         opT: InferredType,
                         that: Expr,
-                        pos: Position) = f(that, opT, pos)
+                        pos: Position)(implicit st: ScopeStack) = f(that, opT, pos)
 
-    def interbinopp[T <: Expr](st: ScopeStack,
-                               f: (Expr, Expr, InferredType, Position) => T,
+    def interbinopp[T <: Expr](f: (Expr, Expr, InferredType, Position) => T,
                                opT: InferredType,
                                lhs: Expr,
                                rhs: Expr,
-                               pos: Position) = {
-      implicit val sta: ScopeStack = st
+                               pos: Position)(implicit st: ScopeStack) = f(lhs, rhs, lhs.t intersect rhs.t intersect opT, pos)
 
-      f(lhs, rhs, lhs.t intersect rhs.t intersect opT, pos)
-    }
-
-    def constbinopp[T <: Expr](st: ScopeStack,
-                               f: (Expr, Expr, InferredType, Position) => T,
+    def constbinopp[T <: Expr](f: (Expr, Expr, InferredType, Position) => T,
                                opT: InferredType,
                                lhs: Expr,
                                rhs: Expr,
-                               pos: Position) = {
-      implicit val sta: ScopeStack = st
+                               pos: Position)(implicit st: ScopeStack) = f(lhs, rhs, opT, pos)
 
-      f(lhs, rhs, opT, pos)
-    }
-
-    def assignopp[T <: Expr](st: ScopeStack,
-                               f: (Expr, Expr, InferredType, Position) => T,
-                               opT: InferredType,
-                               lhs: Expr,
-                               rhs: Expr,
-                               pos: Position) = {
-      implicit val sta: ScopeStack = st
-
+    def assignopp[T <: Expr](f: (Expr, Expr, InferredType, Position) => T,
+                             opT: InferredType,
+                             lhs: Expr,
+                             rhs: Expr,
+                             pos: Position)(implicit st: ScopeStack) = {
       def getMember(m: Member): InferredType = {
         m.e.t.actualT match {
           case ConstT(t: TObject) =>
@@ -328,64 +314,64 @@ object ASTf {
       f(lhs, rhs, lhst intersect rhs.t intersect opT, pos)
     }
 
-    def postInc(that: Expr, pos: Position)(implicit st: ScopeStack) =                 uopp(st, PostInc,   ConstT(TNumber), that, pos)
-    def postDec(that: Expr, pos: Position)(implicit st: ScopeStack) =                 uopp(st, PostDec,   ConstT(TNumber), that, pos)
+    def postInc(that: Expr, pos: Position)(implicit st: ScopeStack) =                 uopp(PostInc,   ConstT(TNumber), that, pos)
+    def postDec(that: Expr, pos: Position)(implicit st: ScopeStack) =                 uopp(PostDec,   ConstT(TNumber), that, pos)
 
-    def not(that: Expr, pos: Position)(implicit st: ScopeStack) =                     uopp(st, Not,       AnyT, that, pos)
-    def bitnot(that: Expr, pos: Position)(implicit st: ScopeStack) =                  uopp(st, BitNot,    ConstT(TNumber), that, pos)
-    def uadd(that: Expr, pos: Position)(implicit st: ScopeStack) =                    uopp(st, UAdd,      AnyT, that, pos)
-    def usub(that: Expr, pos: Position)(implicit st: ScopeStack) =                    uopp(st, USub,      ConstT(TNumber), that, pos)
+    def not(that: Expr, pos: Position)(implicit st: ScopeStack) =                     uopp(Not,       AnyT, that, pos)
+    def bitnot(that: Expr, pos: Position)(implicit st: ScopeStack) =                  uopp(BitNot,    ConstT(TNumber), that, pos)
+    def uadd(that: Expr, pos: Position)(implicit st: ScopeStack) =                    uopp(UAdd,      AnyT, that, pos)
+    def usub(that: Expr, pos: Position)(implicit st: ScopeStack) =                    uopp(USub,      ConstT(TNumber), that, pos)
 
-    def preInc(that: Expr, pos: Position)(implicit st: ScopeStack) =                  uopp(st, PreInc,    ConstT(TNumber), that, pos)
-    def preDec(that: Expr, pos: Position)(implicit st: ScopeStack) =                  uopp(st, PreDec,    ConstT(TNumber), that, pos)
+    def preInc(that: Expr, pos: Position)(implicit st: ScopeStack) =                  uopp(PreInc,    ConstT(TNumber), that, pos)
+    def preDec(that: Expr, pos: Position)(implicit st: ScopeStack) =                  uopp(PreDec,    ConstT(TNumber), that, pos)
 
-    def typeOf(that: Expr, pos: Position)(implicit st: ScopeStack) =                  uopp(st, TypeOf,    AnyT, that, pos)
-    def void(that: Expr, pos: Position)(implicit st: ScopeStack) =                    uopp(st, Void,      AnyT, that, pos)
-    def delete(that: Expr, pos: Position)(implicit st: ScopeStack) =                  uopp(st, Delete,    AnyT, that, pos)
+    def typeOf(that: Expr, pos: Position)(implicit st: ScopeStack) =                  uopp(TypeOf,    AnyT, that, pos)
+    def void(that: Expr, pos: Position)(implicit st: ScopeStack) =                    uopp(Void,      AnyT, that, pos)
+    def delete(that: Expr, pos: Position)(implicit st: ScopeStack) =                  uopp(Delete,    AnyT, that, pos)
 
-    def div(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           interbinopp(st, Div,        ConstT(TNumber), lhs, rhs, pos)
-    def mul(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           interbinopp(st, Mul,        ConstT(TNumber), lhs, rhs, pos)
-    def mod(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           interbinopp(st, Mod,        ConstT(TNumber), lhs, rhs, pos)
+    def div(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           interbinopp(Div,        ConstT(TNumber), lhs, rhs, pos)
+    def mul(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           interbinopp(Mul,        ConstT(TNumber), lhs, rhs, pos)
+    def mod(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           interbinopp(Mod,        ConstT(TNumber), lhs, rhs, pos)
 
-    def add(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           interbinopp(st, Add,        SetT(Set(TString, TNumber)), lhs, rhs, pos)
-    def sub(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           interbinopp(st, Sub,        ConstT(TNumber), lhs, rhs, pos)
+    def add(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           interbinopp(Add,        SetT(Set(TString, TNumber)), lhs, rhs, pos)
+    def sub(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           interbinopp(Sub,        ConstT(TNumber), lhs, rhs, pos)
 
-    def lshift(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =        interbinopp(st, Div,        ConstT(TNumber), lhs, rhs, pos)
-    def rshift(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =        interbinopp(st, Mul,        ConstT(TNumber), lhs, rhs, pos)
-    def urshift(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =       interbinopp(st, Mod,        ConstT(TNumber), lhs, rhs, pos)
+    def lshift(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =        interbinopp(Div,        ConstT(TNumber), lhs, rhs, pos)
+    def rshift(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =        interbinopp(Mul,        ConstT(TNumber), lhs, rhs, pos)
+    def urshift(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =       interbinopp(Mod,        ConstT(TNumber), lhs, rhs, pos)
 
-    def lt(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =            interbinopp(st, Lt,         ConstT(TNumber), lhs, rhs, pos)
-    def lteq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =          interbinopp(st, LtEq,       ConstT(TNumber), lhs, rhs, pos)
-    def gt(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =            interbinopp(st, Gt,         ConstT(TNumber), lhs, rhs, pos)
-    def gteq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =          interbinopp(st, GtEq,       ConstT(TNumber), lhs, rhs, pos)
+    def lt(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =            interbinopp(Lt,         ConstT(TNumber), lhs, rhs, pos)
+    def lteq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =          interbinopp(LtEq,       ConstT(TNumber), lhs, rhs, pos)
+    def gt(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =            interbinopp(Gt,         ConstT(TNumber), lhs, rhs, pos)
+    def gteq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =          interbinopp(GtEq,       ConstT(TNumber), lhs, rhs, pos)
 
-    def in(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =            constbinopp(st, In,         ConstT(TBoolean), lhs, rhs, pos)
-    def instanceof(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =    constbinopp(st, InstanceOf, ConstT(TBoolean), lhs, rhs, pos)
+    def in(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =            constbinopp(In,         ConstT(TBoolean), lhs, rhs, pos)
+    def instanceof(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =    constbinopp(InstanceOf, ConstT(TBoolean), lhs, rhs, pos)
 
-    def jsEq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =          constbinopp(st, Eq,         ConstT(TBoolean), lhs, rhs, pos)
-    def neq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           constbinopp(st, NEq,        ConstT(TBoolean), lhs, rhs, pos)
-    def eeq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           constbinopp(st, EEq,        ConstT(TBoolean), lhs, rhs, pos)
-    def neeq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =          constbinopp(st, NEEq,       ConstT(TBoolean), lhs, rhs, pos)
+    def jsEq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =          constbinopp(Eq,         ConstT(TBoolean), lhs, rhs, pos)
+    def neq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           constbinopp(NEq,        ConstT(TBoolean), lhs, rhs, pos)
+    def eeq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           constbinopp(EEq,        ConstT(TBoolean), lhs, rhs, pos)
+    def neeq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =          constbinopp(NEEq,       ConstT(TBoolean), lhs, rhs, pos)
 
-    def binand(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =        interbinopp(st, BinAnd,     ConstT(TNumber), lhs, rhs, pos)
-    def binxor(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =        interbinopp(st, BinXor,     ConstT(TNumber), lhs, rhs, pos)
-    def binor(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =         interbinopp(st, BinOr,      ConstT(TNumber), lhs, rhs, pos)
+    def binand(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =        interbinopp(BinAnd,     ConstT(TNumber), lhs, rhs, pos)
+    def binxor(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =        interbinopp(BinXor,     ConstT(TNumber), lhs, rhs, pos)
+    def binor(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =         interbinopp(BinOr,      ConstT(TNumber), lhs, rhs, pos)
 
-    def and(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           constbinopp(st, And,        ConstT(TBoolean), lhs, rhs, pos)
-    def or(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =            constbinopp(st, Or,         ConstT(TBoolean), lhs, rhs, pos)
+    def and(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           constbinopp(And,        ConstT(TBoolean), lhs, rhs, pos)
+    def or(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =            constbinopp(Or,         ConstT(TBoolean), lhs, rhs, pos)
 
-    def assign(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =        assignopp(st, Assign,     AnyT, lhs, rhs, pos)
-    def addeq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =         assignopp(st, AddEq,      SetT(Set(TNumber, TString)), lhs, rhs, pos)
-    def subeq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =         assignopp(st, SubEq,      ConstT(TNumber), lhs, rhs, pos)
-    def diveq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =         assignopp(st, DivEq,      ConstT(TNumber), lhs, rhs, pos)
-    def muleq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =         assignopp(st, MulEq,      ConstT(TNumber), lhs, rhs, pos)
-    def modeq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =         assignopp(st, ModEq,      ConstT(TNumber), lhs, rhs, pos)
-    def lshifteq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =      assignopp(st, LShiftEq,   ConstT(TNumber), lhs, rhs, pos)
-    def rshifteq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =      assignopp(st, RShiftEq,   ConstT(TNumber), lhs, rhs, pos)
-    def urshifteq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =     assignopp(st, URShiftEq,  ConstT(TNumber), lhs, rhs, pos)
-    def binandeq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =      assignopp(st, BinAndEq,   ConstT(TNumber), lhs, rhs, pos)
-    def binxoreq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =      assignopp(st, BinXorEq,   ConstT(TNumber), lhs, rhs, pos)
-    def binoreq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =       assignopp(st, BinOrEq,    ConstT(TNumber), lhs, rhs, pos)
+    def assign(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =        assignopp(Assign,     AnyT, lhs, rhs, pos)
+    def addeq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =         assignopp(AddEq,      SetT(Set(TNumber, TString)), lhs, rhs, pos)
+    def subeq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =         assignopp(SubEq,      ConstT(TNumber), lhs, rhs, pos)
+    def diveq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =         assignopp(DivEq,      ConstT(TNumber), lhs, rhs, pos)
+    def muleq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =         assignopp(MulEq,      ConstT(TNumber), lhs, rhs, pos)
+    def modeq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =         assignopp(ModEq,      ConstT(TNumber), lhs, rhs, pos)
+    def lshifteq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =      assignopp(LShiftEq,   ConstT(TNumber), lhs, rhs, pos)
+    def rshifteq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =      assignopp(RShiftEq,   ConstT(TNumber), lhs, rhs, pos)
+    def urshifteq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =     assignopp(URShiftEq,  ConstT(TNumber), lhs, rhs, pos)
+    def binandeq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =      assignopp(BinAndEq,   ConstT(TNumber), lhs, rhs, pos)
+    def binxoreq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =      assignopp(BinXorEq,   ConstT(TNumber), lhs, rhs, pos)
+    def binoreq(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =       assignopp(BinOrEq,    ConstT(TNumber), lhs, rhs, pos)
   }
 
   sealed trait Op extends Expr

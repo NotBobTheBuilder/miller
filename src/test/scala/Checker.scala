@@ -45,6 +45,8 @@ object Checker {
     true  -> "var add = function(a) { return function(b) { return a + b; }; }; add(1)(2); add('1')('2');",
     false -> "var add = function(a) { return function(b) { return a + b; }; }; add(1)(2); add('1')('2'); add(1)('2')",
 
+    true  -> "var add = function(a, b) { return function(c, d) { var e = a + c; return b + d; }; };",
+
     true  -> "var sub = function(a) { return function(b) { return a - b; }; }; sub(1)(2)",
 
     true  -> "function() { if (true) { return 1; } else { return 2; }; }",
