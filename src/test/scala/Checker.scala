@@ -2,7 +2,7 @@ import miller.ASTf.{Add, Expr, Program}
 import miller._
 
 object Checker {
-  def main() {
+  def run() {
     val (passes, fails) = Seq(
     true  -> "1+2+3+4;",
     true  -> "var a = true; a = false",

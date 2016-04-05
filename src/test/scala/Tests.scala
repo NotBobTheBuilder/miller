@@ -1,6 +1,6 @@
 object Tests {
-
   def main(args: Array[String]) {
-    Checker.main()
+    Checker.run()
+    ExpressionSpecs.main(Array())
   }
 }

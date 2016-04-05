@@ -132,7 +132,7 @@ object Parsing extends PackratParsers with ParsingUtils {
 
   lazy val jsRegex =                        regexLit                                    :>  { case ((reg, fs), pos) => LiteralRegExp(reg, fs, pos) }
   lazy val jsString =                       stringLit                                   :>  LiteralStr.tupled
-  lazy val jsNumber =                       numericLit                                  :>  { case (n, pos) => LiteralNum(n.toInt, 0, pos)}
+  lazy val jsNumber =                       numericLit                                  :>  { case (n, pos) => LiteralNum(n, "0", pos)}
 
   lazy val jsNull =                         jsLiteralParser("null", Null)
   lazy val jsFalse =                        jsLiteralParser("false", False)
@@ -200,7 +200,17 @@ object Parsing extends PackratParsers with ParsingUtils {
   private def reader(s: String): PackratReader[Char] = new PackratReader(new CharArrayReader(s.toCharArray))
 
   def parseAST(in: String): AST.Program = jsProgram(reader(in)).get
-  def parse(in: String): ASTf.Program = ASTf.Program.program2f(jsProgram(reader(in)).get)
+  def parse(in: String)(implicit scope: ScopeStack = new ScopeStack()): ASTf.Program = ASTf.Program.program2f(jsProgram(reader(in)).get)(scope)
+
+  def parseExpr(in: String)(implicit st: ScopeStack): AST.Expr = {
+    try {
+      jsExpr(reader(in)).get
+    } catch {
+      case e: Exception =>
+        println(s"Got $e when working with input $in")
+        throw e
+    }
+  }
 }
 
 trait ParsingUtils extends Parsers {
@@ -218,7 +228,7 @@ trait ParsingUtils extends Parsers {
     }
   }
 
-  implicit class FirstFirstParser[U, T](parser: Parser[U ~ Option[T]]) {
+  implicit class LeftRecursiveParser[U, T](parser: Parser[U ~ Option[T]]) {
     def ::>(p: ((U, T, Position)) => U): Parser[U] = parser :> {
       case (e ~ Some(e1), pos) => p((e, e1, pos))
       case (e ~ None, pos) => e

@@ -30,7 +30,7 @@ object AST {
 
   case class Program(statements: Seq[Statement], pos: Position) extends Pos
 
-  sealed trait Statement extends ASTNode {}
+  sealed trait Statement extends ASTNode
 
   case class Return(value: Expr, pos: Position) extends Statement
   case class Declare(vars: Seq[(String, Option[Expr])], pos: Position) extends Statement
@@ -106,13 +106,14 @@ object AST {
   case class BinOrEq(variable: Expr, value: Expr, pos: Position) extends Op
 
   sealed trait Value extends Expr
+  sealed trait JsBool
 
   case class Ident(name: String, pos: Position) extends Value
   case class LiteralRegExp(chars: String, flags: String, pos: Position) extends Value
-  case class LiteralNum(decPart: Int, fracPart: Int, pos: Position) extends Value
+  case class LiteralNum(decPart: String, fracPart: String, pos: Position) extends Value
   case class LiteralStr(string: String, pos: Position) extends Value
-  case class True(pos: Position) extends Value
-  case class False(pos: Position) extends Value
+  case class True(pos: Position) extends Value with JsBool
+  case class False(pos: Position) extends Value with JsBool
   case class Null(pos: Position) extends Value
   case class Undefined(pos: Position) extends Value
   case class This(pos: Position) extends Value

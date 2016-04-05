@@ -1,5 +1,6 @@
 package miller
 
+import scala.annotation.tailrec
 import scala.language.implicitConversions
 
 case class Loan[T, U](l: T) {
@@ -54,7 +55,7 @@ object ASTf {
         case          AST.Div(lhs, rhs, pos) => div(lhs, rhs, pos)
         case          AST.Mod(lhs, rhs, pos) => mod(lhs, rhs, pos)
 
-        case          AST.Add(lhs, rhs, pos) => add(lhs, rhs, pos)
+        case          AST.Add(lhs, rhs, pos) => add(expr2f(lhs), expr2f(rhs), pos)
         case          AST.Sub(lhs, rhs, pos) => sub(lhs, rhs, pos)
 
         case       AST.LShift(lhs, rhs, pos) => lshift(lhs, rhs, pos)
@@ -131,18 +132,9 @@ object ASTf {
           val ps = exprSeq2f(pps)
           val resultType = ps.collectFirst({
             case e: Expr if e.t.isInstanceOf[TypeError] => e.t
-          }).getOrElse(applyCall(f.t, ps, st))
+          }).getOrElse(f.t.applyCall(ps))
 
           JsCall(f, ps, resultType, pos)
-      }
-    }
-
-    def applyCall(t: InferredType, ps: Seq[Expr], st: ScopeStack): InferredType = {
-      implicit val sta = st
-      t match {
-        case ConstT(t: TFunction) => t.callwith(ps)
-        case IntersectT(i) => applyCall(st.getGroupType(GroupID(i)), ps, st)
-        case other => other
       }
     }
 
@@ -172,8 +164,7 @@ object ASTf {
     }
     implicit def statSeq2f(s: Seq[AST.Statement])(implicit st: ScopeStack): Seq[ASTf.Statement] = s.map(statement2f)
 
-    def program2f(p: AST.Program): ASTf.Program = {
-      implicit val scope = new ScopeStack()
+    def program2f(p: AST.Program)(implicit scope: ScopeStack): ASTf.Program = {
       Program(p.statements, scope, p.pos)
     }
   }
@@ -269,10 +260,10 @@ object ASTf {
                         that: Expr,
                         pos: Position)(implicit st: ScopeStack) = f(that, opT, pos)
 
-    def interbinopp[T <: Expr](f: (Expr, Expr, InferredType, Position) => T,
+    def interbinopp[L <: Expr, R <: Expr, T <: Expr](f: (L, R, InferredType, Position) => T,
                                opT: InferredType,
-                               lhs: Expr,
-                               rhs: Expr,
+                               lhs: L,
+                               rhs: R,
                                pos: Position)(implicit st: ScopeStack) = f(lhs, rhs, lhs.t intersect rhs.t intersect opT, pos)
 
     def constbinopp[T <: Expr](f: (Expr, Expr, InferredType, Position) => T,
@@ -333,7 +324,10 @@ object ASTf {
     def mul(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           interbinopp(Mul,        ConstT(TNumber), lhs, rhs, pos)
     def mod(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           interbinopp(Mod,        ConstT(TNumber), lhs, rhs, pos)
 
-    def add(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           interbinopp(Add,        SetT(Set(TString, TNumber)), lhs, rhs, pos)
+//    def add[X <: Expr, Y <: Expr](lhs: X, rhs: Y, pos: Position)(implicit st: ScopeStack) =
+//      interbinopp[X, Y, Add[X, Y]](Add.apply,        SetT(Set(TString, TNumber)), lhs, rhs, pos)
+
+    def add(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           interbinopp(Add,        SetT(Set(TNumber, TString)), lhs, rhs, pos)
     def sub(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =           interbinopp(Sub,        ConstT(TNumber), lhs, rhs, pos)
 
     def lshift(lhs: Expr, rhs: Expr, pos: Position)(implicit st: ScopeStack) =        interbinopp(Div,        ConstT(TNumber), lhs, rhs, pos)
@@ -406,6 +400,7 @@ object ASTf {
   case class Div(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
   case class Mod(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
 
+//  case class Add[LHS <: Expr, RHS <: Expr](lhs: LHS, rhs: RHS, t: InferredType, pos: Position) extends BinOp
   case class Add(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
   case class Sub(lhs: Expr, rhs: Expr, t: InferredType, pos: Position) extends BinOp
 
@@ -456,7 +451,7 @@ object ASTf {
 
   case class Ident(varID: Option[VarID], t: InferredType, pos: Position) extends Value
   case class LiteralRegExp(chars: String, flags: String, pos: Position, t: InferredType = ConstT(TRegExp)) extends Value
-  case class LiteralNum(decPart: Int, fracPart: Int, pos: Position, t: InferredType = ConstT(TNumber)) extends Value
+  case class LiteralNum(decPart: String, fracPart: String, pos: Position, t: InferredType = ConstT(TNumber)) extends Value
   case class LiteralStr(string: String, pos: Position, t: InferredType = ConstT(TString)) extends Value
   case class True(pos: Position, t: InferredType = ConstT(TBoolean)) extends Value
   case class False(pos: Position, t: InferredType = ConstT(TBoolean)) extends Value

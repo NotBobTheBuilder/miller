@@ -13,7 +13,7 @@ object Miller {
     val parsed = Parsing.parse(code.mkString("\n"))
     val checked = Inference.check(code.mkString("\n"))
 
-    println(parsed.annotateSource(code))
+//    println(parsed.annotateSource(code))
     println(checked)
   }
 }

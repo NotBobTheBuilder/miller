@@ -1,5 +1,7 @@
 package miller
 
+import miller.ASTf.Expr
+
 sealed trait JsType {
   def serialize(implicit st: ScopeStack) = this.toString
 
@@ -118,7 +120,7 @@ sealed trait InferredType {
   def isA(t: JsType)(implicit st: ScopeStack): Boolean = this match {
     case ConstT(TFunction(ps, r)) => t.isInstanceOf[TFunction]
     case ConstT(u) => u == t
-    case IntersectT(i) => st.getGroupType(GroupID(i)) isA t
+    case IntersectT(i) => this.actualT isA t
     case _ => false
   }
 
@@ -134,10 +136,18 @@ sealed trait InferredType {
     case IntersectT(i) => st.getGroupType(GroupID(i)).actualT
     case a: DirectType => a
   }
+
+  def applyCall(ps: Seq[Expr])(implicit st: ScopeStack): InferredType = {
+    this match {
+      case ConstT(t: TFunction) => t.callwith(ps)
+      case IntersectT(i) => st.getGroupType(GroupID(i)).applyCall(ps)
+      case other => other
+    }
+  }
 }
 
 // Basically everything that's not an IntersectT
-sealed trait DirectType
+sealed trait DirectType extends InferredType
 
 case object AnyT extends InferredType with DirectType
 
