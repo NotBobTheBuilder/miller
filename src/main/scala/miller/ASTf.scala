@@ -12,7 +12,7 @@ object ASTf {
 
   sealed trait ASTNode extends Pos {
     def typeAnnotations(m: Map[Int, TypeLines]): Map[Int, TypeLines]
-    def addAnnotation(m: Map[Int, TypeLines], pos: Position, t: InferredType) = m ++ (pos.startLine to pos.endLine).map(l => l -> ((pos, t) +: m(l)))
+    def addAnnotation(m: Map[Int, TypeLines], pos: Position, t: InferredType) = m + (pos.startLine -> ((pos, t) +: m(pos.startLine)))
   }
 
   case class Program(statements: Seq[Statement], stack: ScopeStack, pos: Position) extends Pos {
@@ -138,6 +138,7 @@ object ASTf {
     }
 
     implicit def exprSeq2f(s: Seq[AST.Expr])(implicit st: ScopeStack): Seq[ASTf.Expr] = s.map(expr2f)
+    implicit def exprOpt2f(s: Option[AST.Expr])(implicit st: ScopeStack): Option[ASTf.Expr] = s.map(expr2f)
     implicit def exprPair2f(e: (AST.Expr, AST.Expr))(implicit st: ScopeStack): (ASTf.Expr, ASTf.Expr) = (e._1, e._2)
 
     implicit def statement2f(s: AST.Statement)(implicit st: ScopeStack): ASTf.Statement = s match {
@@ -160,8 +161,10 @@ object ASTf {
       case AST.IfElse(cond, tb, fb, pos)  => ASTf.IfElse(cond, tb, fb, pos)
       case AST.While(cond, b, pos)        => ASTf.While(cond, b, pos)
       case AST.JsForIn(ident, e, b, pos)  => ASTf.JsForIn(ident, e, b, pos)
+      case AST.JsFor(dec, cond, post, bs, pos) => ASTf.JsFor(dec, cond, post, bs, pos)
     }
     implicit def statSeq2f(s: Seq[AST.Statement])(implicit st: ScopeStack): Seq[ASTf.Statement] = s.map(statement2f)
+    implicit def statOpt2f(s: Option[AST.Statement])(implicit st: ScopeStack): Option[ASTf.Statement] = s.map(statement2f)
 
     def program2f(p: AST.Program)(implicit scope: ScopeStack): ASTf.Program = {
       Program(p.statements, scope, p.pos)
@@ -170,7 +173,11 @@ object ASTf {
 
   def ident(st: ScopeStack, n: String, pos: Position): Ident = {
     val vid = st.getId(n)
-    Ident(vid, IntersectT(st.getGroup(vid.get).id), pos)
+    Ident(vid,
+      vid
+        .map(id => IntersectT(st.getGroup(id).id))
+        .getOrElse(OutOfScopeErr(n)),
+      pos)
   }
 
   def litObject(es: Map[String, Expr], pos: Position)(implicit st: ScopeStack): ASTf.JsObject = {
@@ -189,6 +196,8 @@ object ASTf {
     val propertyT = exp.t.actualT match {
       case ConstT(t: TObject) => t.properties.getOrElse(prop, NotAProperty(t, prop))
       case ConstT(t) => t.properties.getOrElse(prop, ConstT(TUndefined))
+      case AnyT => AnyT
+      case t: TypeError => t
     }
     Member(exp, prop, propertyT, pos)
   }
@@ -230,6 +239,16 @@ object ASTf {
     pos: Position
   ) extends Statement {
     def typeAnnotations(m: Map[Int, TypeLines]) = (expr +: block).foldLeft(m)((types, stmt) => stmt.typeAnnotations(types))
+  }
+
+  case class JsFor(
+    dec: Option[Statement],
+    cond: Option[Expr],
+    post: Option[Statement],
+    block: Seq[Statement],
+    pos: Position
+  ) extends Statement {
+    def typeAnnotations(m: Map[Int, TypeLines]) = (dec ++ cond ++ post ++ block).foldLeft(m)((types, stmt) => stmt.typeAnnotations(types))
   }
 
   case class If(
@@ -284,6 +303,9 @@ object ASTf {
             rhs.t
           case ConstT(t: TArray) =>
             t.properties.getOrElse(m.member, t.t)
+          case ConstT(t) => t.properties.getOrElse(m.member, AnyT)
+          case AnyT => AnyT
+          case t: TypeError => t
         }
       }
 

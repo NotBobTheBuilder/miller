@@ -12,7 +12,7 @@ case object TNumber extends JsType {
   override def toString = "Number"
 }
 case object TRegExp extends JsType {
-  override def toString = "Number"
+  override def toString = "RegExp"
 }
 case object TString extends JsType {
   override def toString = "String"
@@ -185,10 +185,19 @@ case class IntersectT(vs: Int) extends InferredType
 
 sealed trait TypeError extends InferredType with DirectType
 
-case class NoInterErr(possibles: Set[InferredType]) extends TypeError
-case class BadArgsErr(f: TFunction, e: Seq[InferredType]) extends TypeError
-case class NotAProperty(obj: TObject, property: String) extends TypeError
+case class NoInterErr(possibles: Set[InferredType]) extends TypeError {
+  override def toString = s"Type Error: Can't unify the types ${possibles.init.mkString(", ") + possibles.lastOption.map(" & " + _)}"
+}
+case class BadArgsErr(f: TFunction, e: Seq[InferredType]) extends TypeError {
+  override def toString = s"Type Error: Function $f can't be applied to parameters ${e.mkString(", ")}"
+}
+case class NotAProperty(obj: TObject, property: String) extends TypeError {
+  override def toString = s"Type Error: '$property' is not a property of type ${obj.toString}"
+}
 case class NotAssignableErr(assignee: InferredType, value: InferredType) extends TypeError
+case class OutOfScopeErr(v: String) extends TypeError {
+  override def toString = s"Reference Error: variable '$v' is out of scope"
+}
 
 
 case class VarID(id: Int)

@@ -12,12 +12,8 @@ object Parsing extends PackratParsers with ParsingUtils {
 
   type P[T] = PackratParser[T]
 
-  val reserved = "function var return for in instanceof while if else break switch case true false delete void typeof new continue try catch finally throw".split(" ").toSet
+  val reserved = "function var return for instanceof in while if else break switch case default true false delete void typeof new continue try catch finally throw".split(" ")
   lazy val rchars = (('a' to 'z') ++ ('A' to 'Z') ++ ('0' to '9') ++ ".+*?()[]{}".toCharArray).map(_.toString).foldLeft("a": Parser[String])(_ | _)
-
-
-  lazy val alphaUnder: P[Char] =            (('a' to 'z') ++ ('A' to 'Z')).foldLeft('_': Parser[Char])(_ | _)
-  lazy val digit: P[Char] =                 ('1' to '9').foldLeft('0': Parser[Char])(_ | _)
 
   lazy val ident: P[String] =               wsOpt(
                                               alphaUnder ~ (alphaUnder | digit).* ^^ { case a ~ bs => (a +: bs).mkString }
@@ -31,7 +27,7 @@ object Parsing extends PackratParsers with ParsingUtils {
   lazy val regexLit: P[(String, String)] =  wsOpt(
                                                 '/'
                                                 ~ charExcept('*', '/', '\n', EofCh)
-                                                ~ charExcept('/', '\n', EofCh).*
+                                                ~ (('\\' ~ '/') | charExcept('/', '\n', EofCh)).*
                                                 ~ '/'
                                                 ~ ((('g': Parser[Char]) | 'i' | 'm' | 'u' | 'y').* ^^ (_.toSet.mkString))
                                                                                         ^^ { case '/' ~ t ~ cs ~ '/' ~ fs => ((t +: cs).mkString, fs) })
@@ -67,7 +63,7 @@ object Parsing extends PackratParsers with ParsingUtils {
   lazy val jsEq: P[Expr] =                  jsInstanceOf ~ ("==" ~> jsEq?)              ::> Eq.tupled
 
   lazy val jsInstanceOf: P[Expr] =          jsIn ~ ("instanceof" ~> jsInstanceOf?)      ::> InstanceOf.tupled
-  lazy val jsIn: P[Expr] =                  jsGtEq ~ (wsReq("in") ~> jsIn?)             ::> In.tupled
+  lazy val jsIn: P[Expr] =                  jsGtEq ~ (('i'~'n'~ whitespace.+) ~> jsIn?) ::> In.tupled
   lazy val jsGtEq: P[Expr] =                jsGt ~ (">=" ~> jsGtEq?)                    ::> GtEq.tupled
   lazy val jsGt: P[Expr] =                  jsLtEq ~ (">" ~> jsGt?)                     ::> Gt.tupled
   lazy val jsLtEq: P[Expr] =                jsLt ~ ("<=" ~> jsLtEq?)                    ::> LtEq.tupled
@@ -123,70 +119,76 @@ object Parsing extends PackratParsers with ParsingUtils {
                                                   | jsIdentifier
                                                 )
 
-  lazy val jsParamsDef =                    "(" ~> (repsep(ident, ",") <~ ")")
-  lazy val jsParams =                       "(" ~> (repsep(jsExprTop, ",") <~ ")")      :>  { case (ps, pos) => (ps, pos) }
-  lazy val jsBlock =                        (("{" ~> blockStmts <~ "}")
+  lazy val jsParamsDef: P[Seq[String]] =    "(" ~> (repsep(ident, ",") <~ ")")
+  lazy val jsParams: P[(Seq[Expr], Position)] =
+                                            "(" ~> (repsep(jsExprTop, ",") <~ ")")      :>  { case (ps, pos) => (ps, pos) }
+  lazy val jsBlock: P[Seq[Statement]] =     (("{" ~> blockStmts <~ "}")
                                             | (jsStmt ^^ {i => Seq(i)})
                                             | (jsContinue | jsBreak) ^^^ Seq()
                                             )
 
-  lazy val jsRegex =                        regexLit                                    :>  { case ((reg, fs), pos) => LiteralRegExp(reg, fs, pos) }
-  lazy val jsString =                       stringLit                                   :>  LiteralStr.tupled
-  lazy val jsNumber =                       numericLit                                  :>  { case (n, pos) => LiteralNum(n, "0", pos)}
+  lazy val jsRegex: P[LiteralRegExp] =      regexLit                                    :>  { case ((reg, fs), pos) => LiteralRegExp(reg, fs, pos) }
+  lazy val jsString: P[LiteralStr] =        stringLit                                   :>  LiteralStr.tupled
+  lazy val jsNumber: P[LiteralNum] =        numericLit                                  :>  { case (n, pos) => LiteralNum(n, "0", pos)}
 
-  lazy val jsNull =                         jsLiteralParser("null", Null)
-  lazy val jsFalse =                        jsLiteralParser("false", False)
-  lazy val jsTrue =                         jsLiteralParser("true", True)
-  lazy val jsUndefined =                    jsLiteralParser("undefined", Undefined)
-  lazy val jsThis =                         jsLiteralParser("this", This)
+  lazy val jsNull: P[Null] =                jsLiteralParser("null", Null)
+  lazy val jsFalse: P[False]  =             jsLiteralParser("false", False)
+  lazy val jsTrue: P[True] =                jsLiteralParser("true", True)
+  lazy val jsUndefined: P[Undefined] =      jsLiteralParser("undefined", Undefined)
+  lazy val jsThis: P[This] =                jsLiteralParser("this", This)
 
-  lazy val jsFunction =                     wsOpt("function") ~> (ident?) ~
-    jsParamsDef ~ jsBlock                         :>  { case (name ~ ps ~ b, pos) => JsFunction(name, ps, b, pos) }
+  lazy val jsFunction: P[JsFunction] =      wsOpt("function") ~> (ident?) ~
+                                              jsParamsDef ~ jsBlock                     :>  { case (name ~ ps ~ b, pos) => JsFunction(name, ps, b, pos) }
 
-  lazy val jsIdentifier =                   ident                                       :>  Ident.tupled
+  lazy val jsIdentifier: P[Ident] =         ident                                       :>  Ident.tupled
 
-  lazy val objPair =                        (stringLit | numericLit | ident) ~
+  lazy val objPair: P[(String, Expr)] =     (stringLit | numericLit | ident) ~
                                               (":" ~> jsExprTop)                        :>  { case (k ~ v, pos) => (k, v) }
 
-  lazy val jsObject =                       "{" ~> (repsep(objPair, ",") <~ "}")        :>  { case (es, pos) => JsObject(es.toMap, pos) }
-  lazy val jsArray =                        "[" ~> (repsep(jsExprTop, ",") <~ "]")      :>  JsArray.tupled
+  lazy val jsObject: P[JsObject] =          "{" ~> (repsep(objPair, ",") <~ "}")        :>  { case (es, pos) => JsObject(es.toMap, pos) }
+  lazy val jsArray: P[JsArray] =            "[" ~> (repsep(jsExprTop, ",") <~ "]")      :>  JsArray.tupled
 
-  lazy val jsReturn =                       "return" ~> jsExpr                          :>  Return.tupled
+  lazy val jsReturn: P[Return] =            "return" ~> jsExpr                          :>  Return.tupled
   lazy val jsDeclareWithVal =               ident ~ "=" ~ jsExprTop                     ^^  { case (id ~ "=" ~ e) => (id, Some(e)) }
   lazy val jsDeclareNoVal =                 ident                                       ^^  { case (id)           => (id, None) }
-  lazy val jsDeclare =                      "var" ~> repsep(wsOpt(jsDeclareWithVal | jsDeclareNoVal), ",") :> Declare.tupled
+  lazy val jsDeclare: P[Declare] =          "var" ~> repsep(wsOpt(jsDeclareWithVal | jsDeclareNoVal), ",") :> Declare.tupled
 
-  lazy val jsCond =                         "(" ~> (jsCommas <~ ")")
+  lazy val jsCond: P[Expr] =                "(" ~> (jsCommas <~ ")")
 
-  lazy val jsWhile =                        "while" ~> jsCond ~ jsBlock                 :>  { case (cond ~ block, pos) => While(cond, block, pos) }
+  lazy val jsWhile: P[While] =              "while" ~> jsCond ~ jsBlock                 :>  { case (cond ~ block, pos) => While(cond, block, pos) }
 
-  lazy val jsFor =                          "for" ~> (jsFor1 | jsFor3)                  :>  { case (cond, pos) => cond.copy(pos = cond.pos.union(pos)) }
+  lazy val jsFor: P[Statement] =            "for" ~> (jsFor1 | jsFor3)                  :>  {
+                                                                                              case (cond: JsFor, pos) => cond.copy(pos = cond.pos.union(pos))
+                                                                                              case (cond: JsForIn, pos) => cond.copy(pos = cond.pos.union(pos))
+                                                                                            }
 
-  lazy val jsForInit =                      (jsDeclare | jsExpr)?
+  lazy val jsForInit: P[Option[Statement]] =(jsDeclare | jsExpr)?
 
-  lazy val jsFor3 =                         "(" ~> jsForInit ~ (";" ~> (jsExpr?)) ~
-                                              (";" ~> (jsExpr?) <~ ")") ~ jsBlock       :>  { case (dec ~ comp ~ exp ~ block, pos) => ??? }
+  lazy val jsFor3: P[JsFor] =               "(" ~> jsForInit ~ (";" ~> (jsExpr?)) ~
+                                              (";" ~> (jsExpr?) <~ ")") ~ jsBlock       :>  { case (dec ~ comp ~ exp ~ block, pos) => JsFor(dec, comp, exp, block, pos) }
 
-  lazy val jsFor1 =                         ("(" ~> (
+  lazy val jsFor1: P[JsForIn] =             ("(" ~> (
                                               "var" ~>  ident
                                                     ~   "in"
                                                     ~   jsExprTop
                                             ) <~ ")") ~ jsBlock                         :>  { case (i ~ "in" ~ exp ~ b, pos) => JsForIn(i, exp, b, pos) }
 
-  lazy val jsIf =                           "if" ~> jsCond ~ jsBlock                    :>  { case (cond ~ block, pos) => If(cond, block, pos) }
-  lazy val jsIfElse =                       jsIf ~ ("else" ~> jsBlock)                  :>  { case (If(c, b, pos) ~ fblock, pos2) => IfElse(c, b, fblock, pos union pos2) }
+  lazy val jsIf: P[If] =                    "if" ~> jsCond ~ jsBlock                    :>  { case (cond ~ block, pos) => If(cond, block, pos) }
+  lazy val jsIfElse: P[IfElse] =            jsIf ~ ("else" ~> jsBlock)                  :>  { case (If(c, b, pos) ~ fblock, pos2) => IfElse(c, b, fblock, pos union pos2) }
 
-  lazy val jsTry =                          "try" ~> jsBlock ~ "catch" ~ "(" ~ ident ~ ")" ~ jsBlock :> { case (b ~ _ ~ _ ~ id ~ _ ~ b2, pos) => Undefined(pos) }
+  lazy val jsTry: P[Statement] =            "try" ~> jsBlock ~ "catch" ~ "(" ~ ident ~ ")" ~ jsBlock :> { case (b ~ _ ~ _ ~ id ~ _ ~ b2, pos) => Undefined(pos) }
 
-  lazy val jsSwitch =                       "switch" ~> jsCond ~ jsSwitchBlock          :>  { case (cond ~ block, pos) => Undefined(pos)}
-  lazy val jsSwitchBlock =                  "{" ~> (jsCase.* <~ "}")                    :>  { case (cases, pos) => Undefined(pos) }
-  lazy val jsCase =                         "case" ~> (jsExpr <~ ":") ~
+  lazy val jsSwitch: P[Statement] =         "switch" ~> jsCond ~ jsSwitchBlock          :>  { case (cond ~ block, pos) => Undefined(pos)}
+  lazy val jsSwitchBlock: P[Statement] =    "{" ~> ((jsCase | jsDefault).* <~ "}")      :>  { case (cases, pos) => Undefined(pos) }
+  lazy val jsCase: P[Statement] =           "case" ~> (jsExpr <~ ":") ~
                                                 (blockStmts <~ (jsBreak?))              :>  { case (cond ~ block, pos) => Undefined(pos)}
+  lazy val jsDefault: P[Statement] =        (wsOpt("default") ~ ":") ~
+                                                (blockStmts <~ (jsBreak?))              :>  { case (_ ~ block, pos) => Undefined(pos)}
 
-  lazy val jsBreak =                        "break" ~ (";"?)
-  lazy val jsContinue =                     "continue" ~ (";"?)
+  lazy val jsBreak: P[Any] =                "break" ~ (";"?)
+  lazy val jsContinue: P[Any] =             "continue" ~ (";"?)
 
-  lazy val jsThrow =                        "throw" ~> jsExpr                           :>  { case (e, pos) => Undefined(pos) }
+  lazy val jsThrow: P[Statement] =          "throw" ~> jsExpr                           :>  { case (e, pos) => Undefined(pos) }
 
   lazy val jsProgram: P[Program] =          jsStmt.*                                    :>  { case (prog, pos) => Program(prog, pos) }
 
@@ -213,11 +215,14 @@ object Parsing extends PackratParsers with ParsingUtils {
   }
 }
 
-trait ParsingUtils extends Parsers {
+trait ParsingUtils extends PackratParsers with Parsers  {
   type Elem = Char
 
+  lazy val alphaUnder =            (('a' to 'z') ++ ('A' to 'Z') :+ '$').foldLeft('_': Parser[Char])(_ | _)
+  lazy val digit =                 ('1' to '9').foldLeft('0': Parser[Char])(_ | _)
+
   def jsLiteralParser[T <: Value](token: Parser[String], apply: (Position) => T) =
-    Parser[T] { token :> (res => apply(res._2)) }
+    Parser[T] { token ~ not(alphaUnder | digit) :> (res => apply(res._2)) }
 
   implicit class PositionedParser[T](parser: Parser[T]) {
     def :>[U](p: ((T, Position)) => U): Parser[U] = Parser { in =>

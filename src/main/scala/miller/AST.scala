@@ -35,7 +35,7 @@ object AST {
   case class Return(value: Expr, pos: Position) extends Statement
   case class Declare(vars: Seq[(String, Option[Expr])], pos: Position) extends Statement
   case class While(cond: Expr, block: Seq[Statement], pos: Position) extends Statement
-//  case class JsFor(cond: Expr, block: Seq[Statement], pos: Position) extends Statement
+  case class JsFor(dec: Option[Statement], cond: Option[Expr], post: Option[Expr], block: Seq[Statement], pos: Position) extends Statement
   case class JsForIn(ident: String, expr: Expr, block: Seq[Statement], pos: Position) extends Statement
   case class If(cond: Expr, block: Seq[Statement], pos: Position) extends Statement
   case class IfElse(cond: Expr, tBlock: Seq[Statement], fBlock: Seq[Statement], pos: Position) extends Statement

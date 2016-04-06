@@ -4,9 +4,9 @@ import miller.ASTf._
 
 object Inference {
 
-  def check(input: String): String = {
+  def check(input: String): Option[String] = {
     val (pass, errs) = test(input)
-    if (pass) { "No type errors found (run with -v for full parse tree)\n" } else { errs }
+    if (pass) { None } else { Some(errs) }
   }
 
   def test(input: String): (Boolean, String) = {
@@ -14,9 +14,9 @@ object Inference {
     val results = check(tree.statements, tree.stack)
     val pass = results.isEmpty
 
-    pass -> (input + results.map { poserr =>
-      poserr._1.underline + "\n" + poserr._2
-    }.mkString("\n", "\n", "\n"))
+    pass -> results.map { poserr =>
+      input + poserr._1.underline + "\n" + poserr._2
+    }.mkString("\n", "\n", "\n")
   }
 
   def check(ss: Seq[Statement], st: ScopeStack): Seq[(Position, String)] = {
@@ -30,15 +30,17 @@ object Inference {
       case IfElse(c, ts, fs, pos)         => checkOne(c.t, c.pos) ++ check(ts, st) ++ check(fs, st)
       case Return(e, pos)                 => checkOne(e.t, pos)
       case JsFunction(_, _, bs, t, pos)   => check(bs, st) ++ checkOne(t, pos)
+      case JsCall(f, es, t, pos)          => checkOne(f.t, f.pos) ++ check(es, st) ++ checkOne(t, pos)
       case e: Expr                        => checkOne(e.t, e.pos)
     }
   }
 
-  def checkOne(a: InferredType, pos: Position): Seq[(Position, String)] = {
+  def checkOne(a: InferredType, pos: Position)(implicit st: ScopeStack): Seq[(Position, String)] = {
     a match {
-      case NoInterErr(ts) => Seq(pos -> s"Type Error - ${ts.head} isn't compatible with ${ts.tail.mkString(" v ")}")
-      case BadArgsErr(f, e) => Seq(pos -> s"Function takes ${f.params.length}, called with ${e.length}")
-      case e: TypeError => Seq(pos -> s"Type Error: $e")
+      case NoInterErr(ts) => Seq(pos -> s"Type Error: Line ${pos.startLine}: ")
+      case BadArgsErr(f, e) => Seq(pos -> s"Type Error: Line ${pos.startLine}:Function takes ${f.params.length}, called with ${e.length}")
+      case NotAProperty(obj, prop) => Seq(pos -> s"Type Error: Line ${pos.startLine}: '$prop' is not a property of an object with type ${obj.serialize}")
+      case e: TypeError => Seq(pos -> s"Type Error: Line ${pos.startLine}: $e")
       case _ => Seq()
     }
   }
