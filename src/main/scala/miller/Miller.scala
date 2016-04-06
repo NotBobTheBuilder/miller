@@ -13,7 +13,9 @@ object Miller {
     val parsed = Parsing.parse(code.mkString("\n"))
     val checked = Inference.check(code.mkString("\n"))
 
-//    println(parsed.annotateSource(code))
+    if (args.contains("-v")) {
+      println(parsed.annotateSource(code))
+    }
     println(checked)
   }
 }

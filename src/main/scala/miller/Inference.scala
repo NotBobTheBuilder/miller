@@ -6,7 +6,7 @@ object Inference {
 
   def check(input: String): String = {
     val (pass, errs) = test(input)
-    if (pass) { "OK: " + input + "\n" } else { errs }
+    if (pass) { "No type errors found (run with -v for full parse tree)\n" } else { errs }
   }
 
   def test(input: String): (Boolean, String) = {
@@ -15,7 +15,7 @@ object Inference {
     val pass = results.isEmpty
 
     pass -> (input + results.map { poserr =>
-      poserr._1.position + "\n" + poserr._2
+      poserr._1.underline + "\n" + poserr._2
     }.mkString("\n", "\n", "\n"))
   }
 

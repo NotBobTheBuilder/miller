@@ -28,8 +28,30 @@ case object TNull extends JsType {
 }
 
 case class TFunction(params: Seq[InferredType], result: InferredType) extends JsType {
-  override def serialize(implicit st: ScopeStack) =
-    "Function " + params.map(_.serialize).mkString("(", ", ", ")") + " -> " + result.serialize
+  override def serialize(implicit st: ScopeStack) = {
+    val (env, _, ps) = params.foldLeft((Map[Int, (String, SetT)](), ('A' to 'Z').map(_.toString), Seq[String]()))({
+      case ((m, id, ps), t) => t match {
+        case IntersectT(i) if m.contains(i) => (m, id, m.get(i).get._1 +: ps)
+        case IntersectT(i) if t.actualT.isInstanceOf[ConstT] => (m, id, t.actualT.asInstanceOf[ConstT].t.toString +: ps)
+        case IntersectT(i) if t.actualT.isInstanceOf[SetT] => (m + (i -> (id.head -> t.actualT.asInstanceOf[SetT])), id.tail, id.head +: ps)
+        case _ => (m, id, t.serialize +: ps)
+      }
+    })
+
+    val props = if (env.isEmpty) {
+      " "
+    } else {
+      env
+        .mapValues({ case (id, set) => id + " ∈ " + set.ts.mkString("{ ", ", ", " }") })
+        .values
+        .mkString("[", ", ", "] ")
+    }
+
+    "Function" + props + ps.mkString("(", ", ", ")") + " -> " + (result match {
+      case IntersectT(i) if env.contains(i) => env.get(i).get._1
+      case _ => result.serialize
+    })
+  }
 
   def specialise(implicit st: ScopeStack) = TFunction.tupled(st.copyFuncType(this.params, this.result))
 
@@ -81,7 +103,7 @@ sealed trait InferredType {
     case t: TypeError   => t.toString
     case ConstT(t)      => t.serialize
     case SetT(ts)       => ts.map(_.serialize).mkString("{ ", " v ", " }")
-    case IntersectT(t)  => s"{ $t : ${ st.getGroupType(GroupID(t)).serialize } }"
+    case IntersectT(t)  => this.actualT.serialize //s"{ $t : ${ st.getGroupType(GroupID(t)).serialize } }"
   }
 
   def intersect(other: InferredType)(implicit st: ScopeStack): InferredType = {

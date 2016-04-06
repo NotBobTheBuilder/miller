@@ -8,10 +8,9 @@ case class Loan[T, U](l: T) {
 }
 
 object ASTf {
+  type TypeLines = Seq[(Position, InferredType)]
 
   sealed trait ASTNode extends Pos {
-    type TypeLines = Seq[(Position, InferredType)]
-
     def typeAnnotations(m: Map[Int, TypeLines]): Map[Int, TypeLines]
     def addAnnotation(m: Map[Int, TypeLines], pos: Position, t: InferredType) = m ++ (pos.startLine to pos.endLine).map(l => l -> ((pos, t) +: m(l)))
   }
@@ -19,12 +18,12 @@ object ASTf {
   case class Program(statements: Seq[Statement], stack: ScopeStack, pos: Position) extends Pos {
     val typeAnnotations =
       statements
-        .foldLeft(Map[Int, ASTNode#TypeLines]() withDefaultValue Seq[(Position, InferredType)]())((types, statement) => statement.typeAnnotations(types))
+        .foldLeft(Map[Int, TypeLines]() withDefaultValue Seq[(Position, InferredType)]())((types, statement) => statement.typeAnnotations(types))
 
     def annotateSource(source: Seq[String]): String = {
       source.zipWithIndex.flatMap({
-        case (s, r) => typeAnnotations(r + 1).flatMap {
-          case (ps, t) => Seq(s, ps.position, ps.paddedPrefix(t.serialize(stack)) + "\n")
+        case (line, lineNo) => typeAnnotations(lineNo + 1).flatMap {
+          case (pos, t) => Seq(line, pos.underline, pos.paddedPrefix(t.serialize(stack)) + "\n")
         }
       }).mkString("\n")
     }
@@ -55,7 +54,7 @@ object ASTf {
         case          AST.Div(lhs, rhs, pos) => div(lhs, rhs, pos)
         case          AST.Mod(lhs, rhs, pos) => mod(lhs, rhs, pos)
 
-        case          AST.Add(lhs, rhs, pos) => add(expr2f(lhs), expr2f(rhs), pos)
+        case          AST.Add(lhs, rhs, pos) => add(lhs, rhs, pos)
         case          AST.Sub(lhs, rhs, pos) => sub(lhs, rhs, pos)
 
         case       AST.LShift(lhs, rhs, pos) => lshift(lhs, rhs, pos)

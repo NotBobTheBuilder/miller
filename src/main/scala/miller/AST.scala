@@ -2,7 +2,7 @@ package miller
 
 case class Position(startLine: Int, startCol: Int, endLine: Int, endCol: Int) extends Ordered[Position] {
   override def toString = s"l${startLine}c$startCol"
-  def position = paddedPrefix("^" * (endCol - startCol))
+  def underline = paddedPrefix("^" * (endCol - startCol))
   def paddedPrefix(s: String) = (" " * (startCol - 1)) + s
 
   def union(that: Position) = {
