@@ -51,6 +51,21 @@ case class TFunction(params: Seq[InferredType], result: InferredType) extends Js
       case IntersectT(i) if env.contains(i) => env.get(i).get._1
       case _ => result.serialize
     })
+
+  }
+
+  def intersect(that: TFunction)(implicit st: ScopeStack): InferredType = {
+    val f1 = this.specialise
+    val f2 = that.specialise
+
+    val ps = f1.params.zip(f2.params).map { case (p1, p2) => p1 intersect p2 }
+    val rt = f1.result intersect f2.result
+
+    if (ps.exists(_.isInstanceOf[TypeError]) || rt.isInstanceOf[TypeError]) {
+      NoInterErr(Set(ConstT(this), ConstT(that)))
+    } else {
+      ConstT(TFunction(ps, rt))
+    }
   }
 
   def specialise(implicit st: ScopeStack) = TFunction.tupled(st.copyFuncType(this.params, this.result))
@@ -94,6 +109,13 @@ case class TArray(t: InferredType) extends JsType {
   override val properties = Map("length" -> ConstT(TNumber))
 
   override def serialize(implicit st: ScopeStack) = "Array<" + t.serialize + ">"
+
+  def intersect(that: TArray)(implicit st: ScopeStack) = {
+    this.t intersect that.t match {
+      case e: TypeError => e
+      case t => ConstT(TArray(t))
+    }
+  }
 }
 
 sealed trait InferredType {
@@ -115,6 +137,8 @@ sealed trait InferredType {
       case ConstT(t)      => other match {
         case ConstT(u)    => (t, u) match {
                                case (t1: TObject, t2: TObject) => t1 intersect t2
+                               case (t1: TArray, t2: TArray) => t1 intersect t2
+                               case (f1: TFunction, f2: TFunction) => f1 intersect f2
                                case _ if t == u => ConstT(t)
                                case _ => NoInterErr(Set(ConstT(t), ConstT(u)))
                              }
@@ -186,7 +210,7 @@ case class IntersectT(vs: Int) extends InferredType
 sealed trait TypeError extends InferredType with DirectType
 
 case class NoInterErr(possibles: Set[InferredType]) extends TypeError {
-  override def toString = s"Type Error: Can't unify the types ${possibles.init.mkString(", ") + possibles.lastOption.map(" & " + _)}"
+  override def toString = s"Type Error: Can't unify the types ${possibles.init.mkString(", ") + possibles.lastOption.map(" & " + _).getOrElse("")}"
 }
 case class BadArgsErr(f: TFunction, e: Seq[InferredType]) extends TypeError {
   override def toString = s"Type Error: Function $f can't be applied to parameters ${e.mkString(", ")}"

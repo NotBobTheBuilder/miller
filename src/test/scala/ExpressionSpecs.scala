@@ -8,9 +8,11 @@ object ExpressionSpecs extends Properties("Expression") {
   import AST._
   val pos = Position(0, 0, 0, 0)
 
-  case class IdentName(s: Option[String])
+  case class IdentName(s: String)
 
-  implicit lazy val identName: Arbitrary[IdentName] = Arbitrary(Gen.option(Gen.identifier).map(IdentName))
+  val emptyObject = JsObject(Map(), pos)
+
+  implicit lazy val identName: Arbitrary[IdentName] = Arbitrary(Gen.identifier.map(IdentName))
   implicit lazy val ident: Arbitrary[Ident] = Arbitrary(Gen.identifier.map(s => Ident(s, pos)))
   implicit lazy val num: Arbitrary[LiteralNum] = Arbitrary(Gen.posNum[Int].map(n => LiteralNum(n.toString, "0", pos)))
   implicit lazy val str: Arbitrary[LiteralStr] = Arbitrary(Gen.alphaStr.map(s => LiteralStr(s, pos)))
@@ -50,7 +52,7 @@ object ExpressionSpecs extends Properties("Expression") {
   ).map(a => ConstT(a)))
 
   implicit lazy val st: Arbitrary[SetT] = Arbitrary(
-    Gen.listOf(arbitrary[ConstT])
+    Gen.nonEmptyListOf(arbitrary[ConstT])
       .map(_.toSet.map((p: ConstT) => p.t))
       .map(SetT)
   )
@@ -64,6 +66,11 @@ object ExpressionSpecs extends Properties("Expression") {
   implicit lazy val genStatement: Arbitrary[Statement] = Arbitrary(Gen.oneOf(
     num.arbitrary,
     str.arbitrary
+  ))
+
+  implicit lazy val jsArr: Arbitrary[JsArray] = Arbitrary(Gen.oneOf(
+    Gen.nonEmptyListOf(arbitrary[LiteralNum]).map(ns => JsArray(ns, pos)),
+    Gen.nonEmptyListOf(arbitrary[LiteralStr]).map(ns => JsArray(ns, pos))
   ))
 
   implicit lazy val expr: Arbitrary[Expr] = Arbitrary(Gen.oneOf(
@@ -91,8 +98,8 @@ object ExpressionSpecs extends Properties("Expression") {
     property("string add") = forAll { (h: LiteralStr, t: Seq[LiteralStr]) => addChain(h, t).t isA TString }
   }
 
-  new Properties("HM") {
-    property("T-Var") =         forAll { (id: Ident, p: Expr) =>
+  new Properties("Type Rules") {
+    property("Variable") =         forAll { (id: Ident, p: Expr) =>
       implicit val st: ScopeStack = new ScopeStack
 
       statement2f(Declare(Seq(id.name -> Some(p)), pos))(st)
@@ -100,22 +107,55 @@ object ExpressionSpecs extends Properties("Expression") {
       st.typeOf(id.name).headOption.contains(expr2f(p).t)
     }
 
-    property("T-App") = forAll { (name: IdentName, ps: List[(Ident, Expr)], rt: (Ident, Expr)) =>
+    property("Call") = forAll { (name: Option[IdentName], ps: List[(Ident, Expr)], rt: (Ident, Expr)) =>
       implicit val i: ScopeStack = new ScopeStack
 
-      expr2f(JsFunction(name.s, rt._1.name +: ps.map(_._1.name), Seq(Return(rt._1, pos)), pos))
+      expr2f(JsFunction(name.map(_.s), rt._1.name +: ps.map(_._1.name), Seq(Return(rt._1, pos)), pos))
         .t
         .applyCall(expr2f(rt._2) +: ps.map(_._2).map(expr2f))
         .actualT == rt._2.t
     }
 
-    property("T-Lam") =   forAll { (id: Ident, ret: Expr, call: Expr) => true }
+    property("Define") = forAll { (i: IdentName, e: Expr) =>
+      implicit val st: ScopeStack = new ScopeStack
+      statement2f(Declare(Seq(i.s -> Some(e)), pos))
+      val programTypes = st.typeOf(i.s)
+      programTypes.length == 1 && programTypes.head == e.t
+    }
 
-    property("T-Let") =   forAll { (i: Int) => true }
+    property("Declare") = forAll { (i: IdentName) =>
+      implicit val st: ScopeStack = new ScopeStack
+      statement2f(Declare(Seq(i.s -> None), pos))
+      val programTypes = st.typeOf(i.s)
+      programTypes.length == 1 && programTypes.head == AnyT
+    }
 
-    property("T-Gen") =   forAll { (i: Int) => true }
+    property("Property") = forAll(
+      Gen.nonEmptyListOf(arbitrary[(IdentName, Expr)])
+    ) { (props) =>
+      implicit val st: ScopeStack = new ScopeStack
 
-    property("T-Inst") =  forAll { (i: Int) => true }
+      val ps = props.map { case (id, exp) => id.s -> exp }
+      val (propN, propT) = props.head
+      Member(JsObject(ps.toMap, pos), propN.s, pos).t == propT.t
+    }
+
+    property("Array Element") = forAll { (a: JsArray) =>
+      implicit val st: ScopeStack = new ScopeStack
+
+      a.t match {
+        case ConstT(TArray(t)) => t == CompMem(a, LiteralNum("0", "0", pos), pos).t
+        case _ => false
+      }
+    }
+
+    property("Computed Member") = forAll (
+      Gen.const(emptyObject),
+      arbitrary[IdentName]
+    ) { (obj, prop) =>
+      implicit val st: ScopeStack = new ScopeStack
+      CompMem(obj, LiteralStr(prop.s, pos), pos).t == AnyT
+    }
 
   }.main(Array())
 
@@ -128,6 +168,49 @@ object ExpressionSpecs extends Properties("Expression") {
         case NoInterErr(ts) if lhs.t != rhs.t && ts == Set(lhs, rhs) => true
         case _ => false
       }
+    }
+
+    property("Object Intersection") = forAll { (commonProp: (IdentName, DirectType),
+                                                ps1: Seq[(IdentName, DirectType)],
+                                                ps2: Seq[(IdentName, DirectType)]) =>
+      implicit val st: ScopeStack = new ScopeStack
+
+      val o1 = TObject(collection.mutable.Map((commonProp._1.s -> commonProp._2) +: ps1.map(i => i._1.s -> i._2): _*))
+      val o2 = TObject(collection.mutable.Map((commonProp._1.s -> commonProp._2) +: ps2.map(i => i._1.s -> i._2): _*))
+
+      o1 intersect o2 match {
+        case ConstT(TObject(ps)) => ps.nonEmpty && ps(commonProp._1.s) == commonProp._2
+        case _ => false
+      }
+
+    }
+
+    property("Array Intersection") = forAll { (a1: TArray, a2: TArray) =>
+      implicit val st: ScopeStack = new ScopeStack
+
+      a1.t intersect a2.t match {
+        case e: TypeError => (ConstT(a1) intersect ConstT(a2)).isInstanceOf[TypeError]
+        case exp => (ConstT(a1) intersect ConstT(a2)) == ConstT(TArray(exp))
+      }
+    }
+
+    property("Function Intersection") = forAll { (f1: TFunction, f2: TFunction) =>
+      implicit val st: ScopeStack = new ScopeStack
+
+      f1 intersect f2 match {
+        case e: TypeError => (ConstT(f1) intersect ConstT(f2)).isInstanceOf[TypeError]
+        case exp => (ConstT(f1) intersect ConstT(f2)) == exp
+      }
+    }
+
+    property("Any intersection") = forAll { (t: DirectType) =>
+      implicit val st: ScopeStack = new ScopeStack
+      (AnyT intersect t) == t
+    }
+
+    property("SetT intersection") = forAll { (c: ConstT, s: SetT) =>
+      implicit val st: ScopeStack = new ScopeStack
+      (s.copy(ts = s.ts + c.t) intersect c) == c
     }
   }.main(Array())
 

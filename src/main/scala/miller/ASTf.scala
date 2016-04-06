@@ -1,5 +1,7 @@
 package miller
 
+import miller.AST.Statement
+
 import scala.annotation.tailrec
 import scala.language.implicitConversions
 
@@ -205,7 +207,7 @@ object ASTf {
   def compMem(exp: Expr, prop: Expr, pos: Position)(implicit st: ScopeStack): ASTf.CompMem = {
     val t = exp.t.actualT match {
       case ConstT(t: TArray) => t.t
-      case _ => ConstT(TUndefined)
+      case _ => AnyT
     }
     CompMem(exp, prop, t, pos)
   }
@@ -312,7 +314,7 @@ object ASTf {
       def getCompMember(c: CompMem): InferredType = {
         c.e.t match {
           case ConstT(a: TArray) => a.t
-          case other => ConstT(TUndefined)
+          case other => AnyT
         }
       }
 

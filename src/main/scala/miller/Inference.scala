@@ -37,10 +37,7 @@ object Inference {
 
   def checkOne(a: InferredType, pos: Position)(implicit st: ScopeStack): Seq[(Position, String)] = {
     a match {
-      case NoInterErr(ts) => Seq(pos -> s"Type Error: Line ${pos.startLine}: ")
-      case BadArgsErr(f, e) => Seq(pos -> s"Type Error: Line ${pos.startLine}:Function takes ${f.params.length}, called with ${e.length}")
-      case NotAProperty(obj, prop) => Seq(pos -> s"Type Error: Line ${pos.startLine}: '$prop' is not a property of an object with type ${obj.serialize}")
-      case e: TypeError => Seq(pos -> s"Type Error: Line ${pos.startLine}: $e")
+      case e: TypeError => Seq(pos -> s"Type Error: Line ${pos.startLine}: ${e.serialize}")
       case _ => Seq()
     }
   }
