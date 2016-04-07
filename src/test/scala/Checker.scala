@@ -86,7 +86,7 @@ object Checker {
       }
     }
 
-    println(s"passes: $passes\nfails: $fails")
+    println(s"Unit test passes: $passes\nUnit test fails: $fails")
     if (fails > 0) {
       System.exit(1)
     }

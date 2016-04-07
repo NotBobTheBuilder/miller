@@ -133,8 +133,6 @@ sealed trait InferredType {
   }
 
   def intersect(other: InferredType)(implicit st: ScopeStack): InferredType = {
-    // TODO Consider unification vs pattern matching here
-    // Functional Programming Field & Harisson - Algorithm W / Type Checking etc
     this match {
       case AnyT           => other
       case t: TypeError   => this
@@ -177,8 +175,14 @@ sealed trait InferredType {
   def canSatisfy(other: InferredType)(implicit st: ScopeStack): Boolean = other match {
     case AnyT => true
     case ConstT(t) => this isA t
-    case IntersectT(id) => this canSatisfy st.getGroupType(GroupID(id))
-    case SetT(ss) => ss.exists(this canSatisfy ConstT(_))
+    case IntersectT(id) => this canSatisfy other.actualT
+    case SetT(ss) => this match {
+      case SetT(us) => (us intersect ss).nonEmpty
+      case ConstT(t) => ss.contains(t)
+      case IntersectT(id) => this canSatisfy other.actualT
+      case AnyT => true
+      case t: TypeError => false
+    }
     case t: TypeError => false
   }
 

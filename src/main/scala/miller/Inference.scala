@@ -10,12 +10,13 @@ object Inference {
   }
 
   def test(input: String): (Boolean, String) = {
+    val linedInput = input.split("\n").toSeq
     val tree = Parsing.parse(input)
     val results = check(tree.statements, tree.stack)
     val pass = results.isEmpty
 
-    pass -> results.map { poserr =>
-      input + poserr._1.underline + "\n" + poserr._2
+    pass -> results.map { case poserr =>
+      linedInput(poserr._1.startLine - 1)  + "\n" + poserr._1.underline + "\n" + poserr._2
     }.mkString("\n", "\n", "\n")
   }
 
