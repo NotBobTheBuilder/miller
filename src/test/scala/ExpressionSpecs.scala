@@ -1,5 +1,5 @@
 import miller._
-import org.scalacheck.{Arbitrary, Gen, Properties, Prop}
+import org.scalacheck.{Arbitrary, Gen, Prop, Properties}
 import Prop._
 import Arbitrary.arbitrary
 
@@ -99,12 +99,12 @@ object ExpressionSpecs extends Properties("Expression") {
   }
 
   new Properties("Type Rules") {
-    property("Variable") =         forAll { (id: Ident, p: Expr) =>
+    property("Variable") = forAll { (id: Ident, p: Expr) =>
       implicit val st: ScopeStack = new ScopeStack
 
-      statement2f(Declare(Seq(id.name -> Some(p)), pos))(st)
+      statement2f(Declare(Seq(id.name -> Some(p)), pos))
 
-      st.typeOf(id.name).headOption.contains(expr2f(p).t)
+      Ident(id.name, pos).t.actualT == p.t
     }
 
     property("Call") = forAll { (name: Option[IdentName], ps: List[(Ident, Expr)], rt: (Ident, Expr)) =>
@@ -120,14 +120,14 @@ object ExpressionSpecs extends Properties("Expression") {
       implicit val st: ScopeStack = new ScopeStack
       statement2f(Declare(Seq(i.s -> Some(e)), pos))
       val programTypes = st.typeOf(i.s)
-      programTypes.length == 1 && programTypes.head == e.t
+      Ident(i.s, pos).t.actualT == e.t
     }
 
     property("Declare") = forAll { (i: IdentName) =>
       implicit val st: ScopeStack = new ScopeStack
       statement2f(Declare(Seq(i.s -> None), pos))
       val programTypes = st.typeOf(i.s)
-      programTypes.length == 1 && programTypes.head == AnyT
+      Ident(i.s, pos).t.actualT == AnyT
     }
 
     property("Property") = forAll(
@@ -149,12 +149,9 @@ object ExpressionSpecs extends Properties("Expression") {
       }
     }
 
-    property("Computed Member") = forAll (
-      Gen.const(emptyObject),
-      arbitrary[IdentName]
-    ) { (obj, prop) =>
+    property("Computed Member") = forAll { (prop: IdentName) =>
       implicit val st: ScopeStack = new ScopeStack
-      CompMem(obj, LiteralStr(prop.s, pos), pos).t == AnyT
+      CompMem(emptyObject, LiteralStr(prop.s, pos), pos).t == AnyT
     }
 
   }.main(Array())
@@ -199,7 +196,10 @@ object ExpressionSpecs extends Properties("Expression") {
 
       f1 intersect f2 match {
         case e: TypeError => (ConstT(f1) intersect ConstT(f2)).isInstanceOf[TypeError]
-        case exp => (ConstT(f1) intersect ConstT(f2)) == exp
+        case exp =>
+          f1.params.length == f2.params.length &&
+          f1.params.zip(f2.params).forall(ps => (ps._1 canSatisfy ps._2) || (ps._2 canSatisfy ps._1)) &&
+            ((f1.result canSatisfy f2.result) || (f2.result canSatisfy f1.result))
       }
     }
 
@@ -210,7 +210,11 @@ object ExpressionSpecs extends Properties("Expression") {
 
     property("SetT intersection") = forAll { (c: ConstT, s: SetT) =>
       implicit val st: ScopeStack = new ScopeStack
-      (s.copy(ts = s.ts + c.t) intersect c) == c
+      s intersect c match {
+        case ConstT(t) => s.ts.contains(t)
+        case e: NoInterErr => !s.ts.contains(c.t)
+        case _ => false
+      }
     }
   }.main(Array())
 

@@ -58,13 +58,17 @@ case class TFunction(params: Seq[InferredType], result: InferredType) extends Js
     val f1 = this.specialise
     val f2 = that.specialise
 
-    val ps = f1.params.zip(f2.params).map { case (p1, p2) => p1 intersect p2 }
-    val rt = f1.result intersect f2.result
-
-    if (ps.exists(_.isInstanceOf[TypeError]) || rt.isInstanceOf[TypeError]) {
+    if (f1.params.length != f2.params.length) {
       NoInterErr(Set(ConstT(this), ConstT(that)))
     } else {
-      ConstT(TFunction(ps, rt))
+      val ps = f1.params.zip(f2.params).map { case (p1, p2) => p1 intersect p2 }
+      val rt = f1.result intersect f2.result
+
+      if (ps.exists(_.isInstanceOf[TypeError]) || rt.isInstanceOf[TypeError]) {
+        NoInterErr(Set(ConstT(this), ConstT(that)))
+      } else {
+        ConstT(TFunction(ps, rt))
+      }
     }
   }
 
